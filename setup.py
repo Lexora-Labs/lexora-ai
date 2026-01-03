@@ -19,7 +19,6 @@ setup(
         "ebooklib>=0.18",
         "mobi>=0.3.3",
         "python-docx>=1.0.0",
-        "markdown>=3.5",
         "beautifulsoup4>=4.12.0",
         "python-dotenv>=1.0.0",
     ],

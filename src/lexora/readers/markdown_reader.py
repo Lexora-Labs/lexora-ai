@@ -1,6 +1,5 @@
 """Markdown file reader."""
 
-import markdown
 from .base_reader import FileReader
 
 

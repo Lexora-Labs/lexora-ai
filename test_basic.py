@@ -97,23 +97,28 @@ def test_markdown_reader():
     print("\nTesting Markdown reader...")
     
     try:
+        import tempfile
         from lexora.readers import MarkdownReader
         
-        # Create a test markdown file
-        test_file = "/tmp/test_input.md"
-        if not os.path.exists(test_file):
-            print(f"✗ Test file not found: {test_file}")
-            return False
+        # Create a temporary test markdown file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            test_file = f.name
+            f.write("# Test Document\n\nThis is a test.")
         
-        reader = MarkdownReader()
-        content = reader.read(test_file)
-        
-        assert len(content) > 0, "Content should not be empty"
-        assert "Test Document" in content, "Content should contain the title"
-        
-        print(f"✓ Successfully read {len(content)} characters from markdown file")
-        print("\n✓ Markdown reader test passed!")
-        return True
+        try:
+            reader = MarkdownReader()
+            content = reader.read(test_file)
+            
+            assert len(content) > 0, "Content should not be empty"
+            assert "Test Document" in content, "Content should contain the title"
+            
+            print(f"✓ Successfully read {len(content)} characters from markdown file")
+            print("\n✓ Markdown reader test passed!")
+            return True
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(test_file):
+                os.unlink(test_file)
     except Exception as e:
         print(f"\n✗ Markdown reader test failed: {e}")
         import traceback
