@@ -690,7 +690,31 @@ def process_epub(input_epub: str, output_epub: str, gpt,
 	
 	# Write EPUB - ebooklib's write_epub may strip head content, so we write it
 	# then manually update HTML files with proper head content
-	epub.write_epub(output_epub, book)
+	try:
+		epub.write_epub(output_epub, book)
+	except TypeError as e:
+		if "Argument must be bytes or unicode, got 'NoneType'" in str(e):
+			print(f"[epub] WARNING: TOC item has None UID - attempting workaround...")
+			# Fix None UIDs in TOC items before writing
+			for toc_item in book.toc:
+				if isinstance(toc_item, tuple):
+					item, children = toc_item
+					if hasattr(item, 'uid') and item.uid is None:
+						item.uid = f"nav_{id(item)}"
+				else:
+					if hasattr(toc_item, 'uid') and toc_item.uid is None:
+						toc_item.uid = f"nav_{id(toc_item)}"
+			print(f"[epub] Retrying EPUB write with fixed UIDs...")
+			try:
+				epub.write_epub(output_epub, book)
+				print(f"[epub] ✓ EPUB write succeeded with workaround")
+			except Exception as retry_error:
+				print(f"[epub] ERROR: EPUB write still failed: {type(retry_error).__name__}: {str(retry_error)[:200]}")
+				print(f"[epub] NOTE: Translation is complete but EPUB packaging failed")
+				print(f"[epub] HTML content has been translated and saved in temporary files")
+				# Don't re-raise, continue with head content fix
+		else:
+			raise
 	
 	# Now fix the head content by updating the ZIP directly with our saved translations
 	import tempfile

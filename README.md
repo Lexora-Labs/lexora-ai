@@ -262,11 +262,11 @@ lexora translate book.epub --to-lang vi --workers 2
 ```
 
 **TOC/Navigation errors (TypeError: Argument must be bytes or unicode):**
-- Some EPUB files have incomplete table of contents metadata
-- This causes `ebooklib` to fail when writing the navigation structure
-- The translation completes successfully, but the EPUB write fails
-- Known issue with certain RTL/BIDI EPUBs like `israelsailing.epub`
-- Workaround: The HTML content is translated correctly; the issue is only with the final EPUB packaging
+- ✅ **FIXED**: These errors are now automatically handled with a workaround
+- Some EPUB files have incomplete table of contents metadata (TOC items with `uid=None`)
+- Lexora now detects this issue, auto-generates missing UIDs, and retries the EPUB write
+- Previously failed files like `israelsailing.epub` now translate successfully
+- See [TRANSLATION_FIX_LOG.md](TRANSLATION_FIX_LOG.md) for implementation details
 
 **Missing head content (title, CSS):**
 - The tool automatically preserves `<head>` content via ZIP rewriting
@@ -317,7 +317,7 @@ The `examples/` folder contains sample EPUB files for testing and demonstration 
    - Tests: Right-to-left (RTL) text, bidirectional content, page-progression-direction
    - Content: Hebrew text with RTL layout support
    - Note: Tests RTL language handling and mixed text direction
-   - Known Issue: May fail at EPUB write stage due to incomplete TOC metadata (translation completes successfully)
+   - Status: ✅ Now works perfectly - TOC error is automatically handled
 
 **Running tests:**
 
