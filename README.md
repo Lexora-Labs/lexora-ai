@@ -1,4 +1,4 @@
-# Lexora AI - AI-Powered eBook Translator
+# Lexora - AI-Powered eBook Translator
 
 Lexora AI is an open-source EPUB translation tool powered by Azure OpenAI GPT. It translates eBooks while preserving all formatting, structure, and styling - including bold, italic, links, and nested HTML elements.
 
