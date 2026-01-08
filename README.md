@@ -286,6 +286,47 @@ lexora translate book.epub --to-lang vi
 python -m lexora.cli translate book.epub --to-lang vi
 ```
 
+## Testing
+
+### Example Files
+
+The `examples/` folder contains sample EPUB files for testing and demonstration purposes. These files are sourced from the [EPUB 3 Sample Documents](https://idpf.github.io/epub3-samples/30/samples.html) repository maintained by IDPF, ensuring no legal issues with usage.
+
+**Available test files:**
+
+1. **sample1.epub** - "The Geography of Bliss"
+   - Tests: Basic bilingual translation, paragraph-level processing
+   - Content: Literary narrative with standard formatting
+
+2. **sample2.epub** - "Sway"
+   - Tests: Multi-document structure, table of contents, copyright pages
+   - Content: Book with complex structure and metadata
+
+3. **georgia.epub** - Encyclopedia Britannica Entry
+   - Tests: Reference/encyclopedia content, formal writing style
+   - Content: Structured academic text with definitions and facts
+
+4. **israelsailing.epub** - BIDI and Hebrew Text
+   - Tests: Right-to-left (RTL) text, bidirectional content, page-progression-direction
+   - Content: Hebrew text with RTL layout support
+   - Note: Tests RTL language handling and mixed text direction
+
+**Running tests:**
+
+```bash
+# Test basic bilingual translation
+lexora translate examples/sample1.epub --to-lang vi
+
+# Test with Azure Translator service
+lexora translate examples/sample2.epub --to-lang es --service translator
+
+# Test RTL content handling
+lexora translate examples/israelsailing.epub --to-lang en --from-lang he
+
+# Test encyclopedia/reference content
+lexora translate examples/georgia.epub --to-lang fr --service gpt
+```
+
 ## Project Structure
 
 ```
