@@ -205,3 +205,20 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================================================
+# Lexora AI Project Specific
+# ============================================================================
+
+# Translation cache files
+*.jsonl
+gpt_translation_cache.jsonl
+book_final.jsonl
+book_full.jsonl
+book5.jsonl
+
+# EPUB files
+*.epub
+
+# Test/debug files
+test_auth.py
