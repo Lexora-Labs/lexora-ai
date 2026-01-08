@@ -99,3 +99,46 @@ CONCLUSION
 LEXORA AI successfully handles problematic EPUB files with metadata issues!
 
 ═══════════════════════════════════════════════════════════════════════════════
+⚠️ KNOWN ISSUE: RTL/LTR TEXT DIRECTION
+═══════════════════════════════════════════════════════════════════════════════
+
+STATUS: IDENTIFIED - TO BE ADDRESSED LATER
+
+Issue Description:
+├── Problem: Text direction not properly handled in translated output
+├── Original: Hebrew text with dir="rtl" and page-progression-direction="rtl"
+├── Output: English text needs dir="ltr" but may retain RTL directionality
+└── Impact: Translated text may display with incorrect reading direction
+
+Expected Behavior:
+├── Hebrew (source): Right-to-Left (RTL) text direction
+├── English (target): Left-to-Right (LTR) text direction
+├── HTML attributes: Should update dir="rtl" → dir="ltr"
+├── CSS styles: Should update text-align and direction properties
+└── EPUB metadata: Should update page-progression-direction
+
+Current Behavior:
+├── Translation: ✅ Content correctly translated
+├── Text Direction: ⚠️ May not update directionality attributes
+├── Reading Order: ⚠️ May display backwards in some readers
+└── Layout: ⚠️ Alignment may be incorrect (right-aligned vs left-aligned)
+
+Action Items:
+├── [ ] Test output EPUB in various readers (Calibre, Adobe, etc.)
+├── [ ] Verify text direction attributes in translated XHTML
+├── [ ] Implement dir attribute transformation (rtl → ltr)
+├── [ ] Update CSS direction and text-align properties
+├── [ ] Update EPUB spine page-progression-direction
+└── [ ] Re-test with israelsailing.epub after fixes
+
+Files to Check:
+├── examples/israelsailing_bilingual_he-en.epub (bilingual output)
+├── examples/israelsailing_en.epub (non-bilingual output)
+└── Both may have RTL/LTR direction issues
+
+Priority: Medium (functionality works, but UX may be degraded)
+Complexity: Medium (requires HTML/CSS attribute manipulation)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
