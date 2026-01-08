@@ -50,9 +50,15 @@ class FakeAzureGPT:
         return items
 
 
-def output_with_lang_suffix(epub_path: str, lang: str = "vi") -> str:
+def generate_output_filename(epub_path: str, src_lang: str, tgt_lang: str, bilingual: bool) -> str:
+    """Generate output filename based on translation mode"""
     p = Path(epub_path)
-    return str(p.with_name(f"{p.stem}_{lang}{p.suffix}"))
+    if bilingual:
+        # Bilingual mode: input_bilingual_srclang-deslang.epub
+        return str(p.with_name(f"{p.stem}_bilingual_{src_lang}-{tgt_lang}{p.suffix}"))
+    else:
+        # Non-bilingual mode: input_lang.epub
+        return str(p.with_name(f"{p.stem}_{tgt_lang}{p.suffix}"))
 
 
 def resolve_glossary_path(path: str | None) -> str | None:
@@ -78,14 +84,15 @@ def translate_command(args):
     args.translator_endpoint = args.translator_endpoint or os.getenv("AZURE_TRANSLATOR_ENDPOINT")
     args.translator_key = args.translator_key or os.getenv("AZURE_TRANSLATOR_KEY")
 
-    # Compute default output with language suffix if not provided
+    # Determine bilingual mode first
+    bilingual = not args.no_bilingual
+    
+    # Compute default output filename if not provided
     if not args.output:
-        args.output = output_with_lang_suffix(args.input, args.to_lang)
+        args.output = generate_output_filename(args.input, args.from_lang, args.to_lang, bilingual)
 
     # Normalize endpoint: remove accidental /openai/v1 suffixes
     args.endpoint = normalize_endpoint(args.endpoint)
-
-    bilingual = not args.no_bilingual
 
     # Resolve glossary
     glossary_path = resolve_glossary_path(args.glossary)

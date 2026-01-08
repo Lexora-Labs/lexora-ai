@@ -30,19 +30,66 @@ pip install -r requirements.txt
 
 After installation, the `lexora` command will be available in your virtual environment.
 
+## Translation Services
+
+Lexora AI supports two Azure translation services:
+
+### 1. Azure OpenAI GPT (Default)
+Best for high-quality literary translations with context awareness and custom instructions.
+
+**Pros:**
+- Superior translation quality
+- Context-aware translations
+- Custom instructions support
+- Maintains literary style and tone
+- Better handling of idioms and cultural references
+
+**Cons:**
+- Higher API costs
+- Slower processing
+- Rate limits may apply
+
+**Setup:**
+```bash
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_KEY=your_api_key_here
+AZURE_OPENAI_DEPLOYMENT=gpt-4
+AZURE_OPENAI_API_VERSION=2024-02-01
+```
+
+### 2. Azure Text Translator
+Fast and cost-effective for general purpose translations.
+
+**Pros:**
+- Fast translation speed
+- Lower API costs
+- High throughput
+- Reliable and consistent
+
+**Cons:**
+- Less context-aware than GPT
+- May not preserve literary nuances
+- No custom instruction support
+
+**Setup:**
+```bash
+AZURE_TRANSLATOR_ENDPOINT=https://your-region.api.cognitive.microsofttranslator.com/
+AZURE_TRANSLATOR_KEY=your_translator_key_here
+```
+
 ## Configuration
 
-Create a `.env` file in your project directory with your API credentials:
+Create a `.env` file in your project directory with your API credentials. Choose one or both services:
 
 ```bash
-# Azure OpenAI (required for GPT translation)
+# Option 1: Azure OpenAI GPT (recommended for books)
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_KEY=your_api_key_here
 AZURE_OPENAI_DEPLOYMENT=gpt-4
 AZURE_OPENAI_API_VERSION=2024-02-01
 
-# Azure Text Translator (optional - alternative to GPT)
-AZURE_TRANSLATOR_ENDPOINT=https://api.cognitive.microsofttranslator.com/
+# Option 2: Azure Text Translator (faster, more economical)
+AZURE_TRANSLATOR_ENDPOINT=https://your-region.api.cognitive.microsofttranslator.com/
 AZURE_TRANSLATOR_KEY=your_translator_key_here
 ```
 
@@ -52,17 +99,29 @@ See `.env.example` for a template.
 
 ### Basic Translation
 
-Translate an EPUB to Vietnamese:
+**Using Azure OpenAI GPT (default):**
 ```bash
 lexora translate input.epub --to-lang vi
 ```
+Output: `input_bilingual_en-vi.epub`
 
-The output will be saved as `input_vi.epub` by default.
+**Using Azure Text Translator:**
+```bash
+lexora translate input.epub --to-lang vi --service translator
+```
+Output: `input_bilingual_en-vi.epub`
 
-Translate to Spanish with custom output:
+**Non-bilingual mode (translation only):**
+```bash
+lexora translate book.epub --to-lang es --no-bilingual
+```
+Output: `book_es.epub`
+
+**Custom output filename:**
 ```bash
 lexora translate book.epub book_spanish.epub --to-lang es
 ```
+Output: `book_spanish.epub`
 
 ### Advanced Options
 
@@ -73,10 +132,18 @@ lexora translate book.epub --to-lang vi \
   --translated-style "font-style: italic;"
 ```
 
-**Custom translation instructions:**
+**Custom translation instructions (GPT only):**
 ```bash
 lexora translate book.epub --to-lang es \
+  --service gpt \
   --instruction "Translate maintaining literary style. Use formal Spanish."
+```
+
+**Fast translation with Azure Translator:**
+```bash
+lexora translate book.epub --to-lang vi \
+  --service translator \
+  --workers 8
 ```
 
 **Control processing limits:**
