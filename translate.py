@@ -65,8 +65,7 @@ def resolve_glossary_path(path: str | None) -> str | None:
 def main():
     # Welcome message
     print("=" * 70)
-    print("  Lexora AI")
-    print("  AI-powered eBook translation tool")
+    print("  Lexora AI - AI-Powered eBook Translator")
     print("  https://github.com/Lexora-Labs/lexora-ai")
     print("=" * 70)
     print()

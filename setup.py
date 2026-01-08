@@ -1,41 +1,55 @@
-from setuptools import setup, find_packages
+"""
+Setup configuration for Lexora AI
+"""
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+from setuptools import setup, find_packages
+from pathlib import Path
+
+# Read the README file
+readme_file = Path(__file__).parent / "README.md"
+long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists() else ""
 
 setup(
     name="lexora-ai",
     version="0.1.0",
     author="Lexora Labs",
-    description="AI-powered eBook translation tool",
+    author_email="",
+    description="AI-Powered eBook Translator for EPUB files",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=find_packages(where="src"),
+    url="https://github.com/Lexora-Labs/lexora-ai",
+    project_urls={
+        "Bug Tracker": "https://github.com/Lexora-Labs/lexora-ai/issues",
+        "Source Code": "https://github.com/Lexora-Labs/lexora-ai",
+    },
     package_dir={"": "src"},
-    python_requires=">=3.8",
+    packages=find_packages(where="src"),
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Text Processing :: Linguistic",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+    ],
+    python_requires=">=3.9",
     install_requires=[
-        "openai>=1.0.0",
-        "azure-ai-inference>=1.0.0b1",
         "ebooklib>=0.18",
-        "mobi>=0.3.3",
-        "python-docx>=1.0.0",
-        "beautifulsoup4>=4.12.0",
-        "python-dotenv>=1.0.0",
+        "beautifulsoup4>=4.9.0",
+        "lxml>=4.6.0",
+        "openai>=1.0.0",
+        "requests>=2.25.0",
+        "python-dotenv>=0.19.0",
     ],
     entry_points={
         "console_scripts": [
             "lexora=lexora.cli:main",
         ],
     },
-    classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
+    keywords="epub translation ai gpt azure openai ebook translator",
+    license="Apache License 2.0",
 )

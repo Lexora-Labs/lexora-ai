@@ -1,17 +1,21 @@
-"""Lexora AI - eBook translation tool."""
+"""
+Lexora AI - AI-Powered eBook Translator
 
-from .translator import Translator
-from .services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
-from .readers import EpubReader, MobiReader, WordReader, MarkdownReader
+An open-source EPUB translation tool powered by Azure OpenAI GPT.
+"""
 
 __version__ = "0.1.0"
+
+from .translator import (
+    AzureGPT,
+    AzureTextTranslator,
+    process_epub,
+    Cache,
+)
+
 __all__ = [
-    'Translator',
-    'OpenAIService',
-    'AzureOpenAIService',
-    'AzureAIFoundryService',
-    'EpubReader',
-    'MobiReader',
-    'WordReader',
-    'MarkdownReader',
+    "AzureGPT",
+    "AzureTextTranslator",
+    "process_epub",
+    "Cache",
 ]
