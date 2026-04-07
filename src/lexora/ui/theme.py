@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import flet as ft
+import threading
 from dataclasses import dataclass
 from typing import Optional
 
@@ -106,20 +107,23 @@ class Colors:
     WARNING: str = DARK_PALETTE.WARNING
     DIVIDER: str = DARK_PALETTE.DIVIDER
 
+    _lock: threading.Lock = threading.Lock()
+
     @classmethod
     def update_from_palette(cls, palette: ColorPalette) -> None:
-        """Update all color tokens from *palette*."""
-        cls.BACKGROUND = palette.BACKGROUND
-        cls.SURFACE = palette.SURFACE
-        cls.SURFACE_VARIANT = palette.SURFACE_VARIANT
-        cls.PRIMARY = palette.PRIMARY
-        cls.PRIMARY_DARK = palette.PRIMARY_DARK
-        cls.TEXT_PRIMARY = palette.TEXT_PRIMARY
-        cls.TEXT_SECONDARY = palette.TEXT_SECONDARY
-        cls.ERROR = palette.ERROR
-        cls.SUCCESS = palette.SUCCESS
-        cls.WARNING = palette.WARNING
-        cls.DIVIDER = palette.DIVIDER
+        """Update all color tokens from *palette* in a thread-safe manner."""
+        with cls._lock:
+            cls.BACKGROUND = palette.BACKGROUND
+            cls.SURFACE = palette.SURFACE
+            cls.SURFACE_VARIANT = palette.SURFACE_VARIANT
+            cls.PRIMARY = palette.PRIMARY
+            cls.PRIMARY_DARK = palette.PRIMARY_DARK
+            cls.TEXT_PRIMARY = palette.TEXT_PRIMARY
+            cls.TEXT_SECONDARY = palette.TEXT_SECONDARY
+            cls.ERROR = palette.ERROR
+            cls.SUCCESS = palette.SUCCESS
+            cls.WARNING = palette.WARNING
+            cls.DIVIDER = palette.DIVIDER
 
 
 # ---------------------------------------------------------------------------

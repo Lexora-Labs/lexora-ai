@@ -594,30 +594,27 @@ def main(page: ft.Page):
         index = e.control.selected_index
         on_nav_change_internal(index)
 
+    def _refresh_chrome_colors():
+        """Apply Colors singleton values to all persistent chrome controls."""
+        page.bgcolor = Colors.BACKGROUND
+        header.bgcolor = Colors.BACKGROUND
+        header.border = ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE))
+        nav_rail.bgcolor = Colors.SURFACE
+        nav_rail.indicator_color = Colors.PRIMARY
+        sidebar.bgcolor = Colors.SURFACE
+
     def on_toggle_theme(e):
         """Cycle through DARK → LIGHT → SYSTEM and rebuild views."""
         next_mode = _cycle_theme(current_theme["mode"])
         current_theme["mode"] = next_mode
         _apply_theme(page, next_mode)
 
-        # Update theme button icon
         theme_btn.icon = _theme_icon(next_mode)
-
-        # Update static header colours
-        page.bgcolor = Colors.BACKGROUND
-        header.bgcolor = Colors.BACKGROUND
-        header.border = ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE))
+        _refresh_chrome_colors()
 
         # Clear view cache so screens rebuild with new palette
         views_cache.clear()
         content_area.content = get_view(current_index["value"])
-
-        # Update nav rail colors
-        nav_rail.bgcolor = Colors.SURFACE
-        nav_rail.indicator_color = Colors.PRIMARY
-
-        # Update sidebar
-        sidebar.bgcolor = Colors.SURFACE
 
         page.update()
 

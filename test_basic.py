@@ -126,17 +126,93 @@ def test_markdown_reader():
         return False
 
 
+def test_theme_system():
+    """Test the centralized theme system."""
+    print("\nTesting theme system...")
+
+    try:
+        import flet as ft
+        from lexora.ui.theme import (
+            Colors,
+            DARK_PALETTE,
+            LIGHT_PALETTE,
+            apply_theme,
+            cycle_theme_mode,
+            theme_mode_icon,
+            theme_mode_label,
+            get_palette,
+        )
+
+        # --- Palette values ---
+        assert DARK_PALETTE.BACKGROUND == "#0F172A", "Dark background mismatch"
+        assert LIGHT_PALETTE.BACKGROUND == "#F0F4F8", "Light background mismatch"
+        print("✓ Dark / light palettes have correct values")
+
+        # --- get_palette ---
+        assert get_palette(ft.ThemeMode.DARK) is DARK_PALETTE
+        assert get_palette(ft.ThemeMode.LIGHT) is LIGHT_PALETTE
+        assert get_palette(ft.ThemeMode.SYSTEM) is DARK_PALETTE  # default
+        print("✓ get_palette() returns correct palette for each ThemeMode")
+
+        # --- Colors singleton reflects dark palette by default ---
+        assert Colors.BACKGROUND == DARK_PALETTE.BACKGROUND
+        assert Colors.PRIMARY == DARK_PALETTE.PRIMARY
+        print("✓ Colors singleton initialised to dark palette")
+
+        # --- update_from_palette switches colors ---
+        Colors.update_from_palette(LIGHT_PALETTE)
+        assert Colors.BACKGROUND == LIGHT_PALETTE.BACKGROUND
+        assert Colors.PRIMARY == LIGHT_PALETTE.PRIMARY
+        Colors.update_from_palette(DARK_PALETTE)  # restore
+        assert Colors.BACKGROUND == DARK_PALETTE.BACKGROUND
+        print("✓ Colors.update_from_palette() switches palette in-place")
+
+        # --- cycle_theme_mode ---
+        assert cycle_theme_mode(ft.ThemeMode.DARK) == ft.ThemeMode.LIGHT
+        assert cycle_theme_mode(ft.ThemeMode.LIGHT) == ft.ThemeMode.SYSTEM
+        assert cycle_theme_mode(ft.ThemeMode.SYSTEM) == ft.ThemeMode.DARK
+        print("✓ cycle_theme_mode() cycles DARK→LIGHT→SYSTEM→DARK")
+
+        # --- theme_mode_icon ---
+        assert theme_mode_icon(ft.ThemeMode.DARK) == ft.icons.DARK_MODE
+        assert theme_mode_icon(ft.ThemeMode.LIGHT) == ft.icons.LIGHT_MODE
+        assert theme_mode_icon(ft.ThemeMode.SYSTEM) == ft.icons.BRIGHTNESS_AUTO
+        print("✓ theme_mode_icon() returns correct icon for each mode")
+
+        # --- theme_mode_label ---
+        assert theme_mode_label(ft.ThemeMode.DARK) == "Dark"
+        assert theme_mode_label(ft.ThemeMode.LIGHT) == "Light"
+        assert theme_mode_label(ft.ThemeMode.SYSTEM) == "System"
+        print("✓ theme_mode_label() returns correct label for each mode")
+
+        # --- Thread safety: _lock exists and is a Lock ---
+        import threading
+        assert isinstance(Colors._lock, type(threading.Lock())), \
+            "Colors._lock is not a threading.Lock"
+        print("✓ Colors._lock is a threading.Lock (thread-safe)")
+
+        print("\n✓ Theme system tests passed!")
+        return True
+
+    except Exception as e:
+        print(f"\n✗ Theme system test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
     print("Lexora AI - Basic Functionality Tests")
     print("=" * 60)
-    
+
     results = []
     results.append(("Imports", test_imports()))
     results.append(("Format Detection", test_reader_supports()))
     results.append(("Service Configuration", test_service_configuration()))
     results.append(("Markdown Reader", test_markdown_reader()))
+    results.append(("Theme System", test_theme_system()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")

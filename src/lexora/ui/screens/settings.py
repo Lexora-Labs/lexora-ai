@@ -310,7 +310,7 @@ class SettingsScreen(ft.Container):
 
     def _on_theme_change(self, e):
         """Apply the selected theme immediately."""
-        from lexora.ui.theme import apply_theme, theme_mode_label
+        from lexora.ui.theme import apply_theme
         mode_map = {
             "dark": ft.ThemeMode.DARK,
             "light": ft.ThemeMode.LIGHT,
