@@ -7,13 +7,7 @@ Collapsible sidebar with main navigation menu.
 import flet as ft
 from typing import Callable, Optional
 
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
+from lexora.ui.theme import Colors
 
 
 class Sidebar(ft.Container):

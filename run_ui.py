@@ -4,23 +4,22 @@ Lexora AI Desktop UI Launcher (Flet 0.21.x)
 """
 
 import sys
+import os
 from pathlib import Path
 import threading
 import time
 
 import flet as ft
 
+# Allow importing the shared theme module from src/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-# ============ Colors ============
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
-    WARNING = "#F59E0B"
+from lexora.ui.theme import (
+    Colors,
+    apply_theme as _apply_theme,
+    cycle_theme_mode as _cycle_theme,
+    theme_mode_icon as _theme_icon,
+)
 
 
 # ============ Provider Config ============
@@ -505,21 +504,26 @@ def create_settings_view(page: ft.Page) -> ft.Control:
 # ============ Main Layout ============
 def main(page: ft.Page):
     """Main UI entry point with sidebar layout."""
-    
+
     # Page config
     page.title = "Lexora AI"
-    page.window_width = 1100
-    page.window_height = 750
-    page.bgcolor = Colors.BACKGROUND
-    page.theme_mode = ft.ThemeMode.DARK
+    page.window.width = 1100
+    page.window.height = 750
+    page.window.min_width = 800
+    page.window.min_height = 600
     page.padding = 0
-    
+
+    # Apply initial theme (dark)
+    current_theme = {"mode": ft.ThemeMode.DARK}
+    _apply_theme(page, current_theme["mode"])
+    page.bgcolor = Colors.BACKGROUND
+
     # Current view state
     current_index = {"value": 1}  # Start on Translate page
-    
+
     # Views container
     content_area = ft.Container(expand=True, padding=24)
-    
+
     # Page configs
     PAGE_CONFIG = {
         0: {"title": "Dashboard", "subtitle": "Overview of your translations"},
@@ -528,15 +532,23 @@ def main(page: ft.Page):
         3: {"title": "Jobs", "subtitle": "Translation queue and history"},
         4: {"title": "Settings", "subtitle": "Application preferences"},
     }
-    
-    # Header
+
+    # Header texts (refs so we can update on nav change)
     header_title = ft.Text("Translate", size=24, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
     header_subtitle = ft.Text("Translate eBooks with AI", size=14, color=Colors.TEXT_SECONDARY)
-    
+
+    # Theme toggle button (declared early; handler added below)
+    theme_btn = ft.IconButton(
+        icon=_theme_icon(current_theme["mode"]),
+        icon_color=Colors.TEXT_SECONDARY,
+        tooltip="Toggle theme",
+    )
+
     header = ft.Container(
         content=ft.Row([
             ft.Column([header_title, header_subtitle], spacing=2),
             ft.Container(expand=True),
+            theme_btn,
             ft.IconButton(icon=ft.icons.NOTIFICATIONS_OUTLINED, icon_color=Colors.TEXT_SECONDARY),
             ft.IconButton(icon=ft.icons.ACCOUNT_CIRCLE_OUTLINED, icon_color=Colors.TEXT_SECONDARY),
         ]),
@@ -544,15 +556,15 @@ def main(page: ft.Page):
         bgcolor=Colors.BACKGROUND,
         border=ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE)),
     )
-    
-    # Views cache
+
+    # Views cache – cleared on theme switch so views rebuild with new colors
     views_cache = {}
-    
+
     def navigate_to(index: int):
         """Navigate to a screen by index."""
         nav_rail.selected_index = index
         on_nav_change_internal(index)
-    
+
     def on_nav_change_internal(index: int):
         """Internal navigation handler."""
         current_index["value"] = index
@@ -561,7 +573,7 @@ def main(page: ft.Page):
         header_subtitle.value = config["subtitle"]
         content_area.content = get_view(index)
         page.update()
-    
+
     def get_view(index: int) -> ft.Control:
         if index not in views_cache:
             if index == 0:
@@ -577,21 +589,47 @@ def main(page: ft.Page):
             else:
                 views_cache[index] = ft.Text("Page not found", color=Colors.TEXT_PRIMARY)
         return views_cache[index]
-    
+
     def on_nav_change(e):
         index = e.control.selected_index
         on_nav_change_internal(index)
-    
+
+    def _refresh_chrome_colors():
+        """Apply Colors singleton values to all persistent chrome controls."""
+        page.bgcolor = Colors.BACKGROUND
+        header.bgcolor = Colors.BACKGROUND
+        header.border = ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE))
+        nav_rail.bgcolor = Colors.SURFACE
+        nav_rail.indicator_color = Colors.PRIMARY
+        sidebar.bgcolor = Colors.SURFACE
+
+    def on_toggle_theme(e):
+        """Cycle through DARK → LIGHT → SYSTEM and rebuild views."""
+        next_mode = _cycle_theme(current_theme["mode"])
+        current_theme["mode"] = next_mode
+        _apply_theme(page, next_mode)
+
+        theme_btn.icon = _theme_icon(next_mode)
+        _refresh_chrome_colors()
+
+        # Clear view cache so screens rebuild with new palette
+        views_cache.clear()
+        content_area.content = get_view(current_index["value"])
+
+        page.update()
+
+    theme_btn.on_click = on_toggle_theme
+
     # Sidebar state
     sidebar_expanded = {"value": True}
-    
+
     def toggle_sidebar(e):
         sidebar_expanded["value"] = not sidebar_expanded["value"]
         nav_rail.extended = sidebar_expanded["value"]
         toggle_btn.icon = ft.icons.MENU_OPEN if sidebar_expanded["value"] else ft.icons.MENU
         logo_text.visible = sidebar_expanded["value"]
         page.update()
-    
+
     # Navigation Rail
     nav_rail = ft.NavigationRail(
         selected_index=current_index["value"],
@@ -610,7 +648,7 @@ def main(page: ft.Page):
             ft.NavigationRailDestination(icon=ft.icons.SETTINGS_OUTLINED, selected_icon=ft.icons.SETTINGS, label="Settings"),
         ],
     )
-    
+
     # Logo
     logo_text = ft.Text("Lexora", size=20, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
     logo = ft.Container(
@@ -620,7 +658,7 @@ def main(page: ft.Page):
         ], spacing=8, alignment=ft.MainAxisAlignment.CENTER),
         padding=ft.padding.symmetric(vertical=16),
     )
-    
+
     # Toggle button
     toggle_btn = ft.IconButton(
         icon=ft.icons.MENU_OPEN,
@@ -628,7 +666,7 @@ def main(page: ft.Page):
         tooltip="Toggle sidebar",
         on_click=toggle_sidebar,
     )
-    
+
     # Sidebar
     sidebar = ft.Container(
         content=ft.Column([
@@ -640,16 +678,16 @@ def main(page: ft.Page):
         ], spacing=0, expand=True),
         bgcolor=Colors.SURFACE,
     )
-    
+
     # Initial content
     content_area.content = get_view(current_index["value"])
-    
+
     # Right panel
     right_panel = ft.Column([
         header,
         content_area,
     ], spacing=0, expand=True)
-    
+
     # Main layout
     page.add(
         ft.Row([

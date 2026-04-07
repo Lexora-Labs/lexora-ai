@@ -12,16 +12,7 @@ import flet as ft
 from typing import Optional, Dict
 import os
 
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
-    WARNING = "#F59E0B"
+from lexora.ui.theme import Colors
 
 
 # Provider configurations
@@ -199,6 +190,7 @@ class SettingsScreen(ft.Container):
             width=200,
             bgcolor=Colors.BACKGROUND,
             border_radius=8,
+            on_change=self._on_theme_change,
         )
         
         ui_section = ft.Container(
@@ -316,6 +308,18 @@ class SettingsScreen(ft.Container):
         else:
             self._show_snackbar("Please enter an API key", Colors.WARNING)
 
+    def _on_theme_change(self, e):
+        """Apply the selected theme immediately."""
+        from lexora.ui.theme import apply_theme
+        mode_map = {
+            "dark": ft.ThemeMode.DARK,
+            "light": ft.ThemeMode.LIGHT,
+            "system": ft.ThemeMode.SYSTEM,
+        }
+        mode = mode_map.get(e.control.value, ft.ThemeMode.DARK)
+        apply_theme(self.page, mode)
+        self.page.update()
+
     def _save_settings(self, e):
         """Save all settings."""
         self._show_snackbar("Settings saved successfully!", Colors.SUCCESS)
@@ -329,6 +333,9 @@ class SettingsScreen(ft.Container):
         self.bilingual_switch.value = True
         self.cache_switch.value = True
         self.theme_dropdown.value = "dark"
+        # Reset to dark theme
+        from lexora.ui.theme import apply_theme
+        apply_theme(self.page, ft.ThemeMode.DARK)
         self.page.update()
         self._show_snackbar("Settings reset to defaults", Colors.PRIMARY)
 

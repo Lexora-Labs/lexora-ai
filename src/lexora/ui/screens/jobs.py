@@ -12,16 +12,7 @@ from typing import Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
-    WARNING = "#F59E0B"
+from lexora.ui.theme import Colors
 
 
 class JobStatus(Enum):

@@ -9,14 +9,7 @@ from typing import Optional, Dict, Callable
 
 from .sidebar import Sidebar
 from .header import Header
-
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
+from lexora.ui.theme import Colors
 
 
 # Page configurations
