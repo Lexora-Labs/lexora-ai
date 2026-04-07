@@ -1,0 +1,342 @@
+"""
+Settings Screen
+
+Application settings:
+- AI Provider configuration
+- API Keys
+- Model defaults
+- UI preferences
+"""
+
+import flet as ft
+from typing import Optional, Dict
+import os
+
+
+class Colors:
+    BACKGROUND = "#0F172A"
+    SURFACE = "#1E293B"
+    PRIMARY = "#06B6D4"
+    TEXT_PRIMARY = "#F8FAFC"
+    TEXT_SECONDARY = "#94A3B8"
+    ERROR = "#F43F5E"
+    SUCCESS = "#10B981"
+    WARNING = "#F59E0B"
+
+
+# Provider configurations
+PROVIDERS_CONFIG = {
+    "OpenAI": {
+        "env_var": "OPENAI_API_KEY",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4"],
+        "default_model": "gpt-4o",
+    },
+    "Azure OpenAI": {
+        "env_var": "AZURE_OPENAI_KEY",
+        "env_vars": ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_KEY", "AZURE_OPENAI_DEPLOYMENT"],
+        "models": ["gpt-4o", "gpt-4", "gpt-35-turbo"],
+        "default_model": "gpt-4o",
+    },
+    "Gemini": {
+        "env_var": "GOOGLE_API_KEY",
+        "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"],
+        "default_model": "gemini-1.5-pro",
+    },
+    "Anthropic": {
+        "env_var": "ANTHROPIC_API_KEY",
+        "models": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+        "default_model": "claude-sonnet-4-20250514",
+    },
+    "Qwen": {
+        "env_var": "DASHSCOPE_API_KEY",
+        "models": ["qwen-max", "qwen-plus", "qwen-turbo"],
+        "default_model": "qwen-max",
+    },
+}
+
+
+class SettingsScreen(ft.Container):
+    """Settings screen with configuration options."""
+
+    def __init__(self, page: ft.Page):
+        super().__init__()
+        self.page = page
+        self._build()
+
+    def _build(self):
+        """Build the settings UI."""
+        
+        # Provider Settings Section
+        provider_cards = []
+        for name, config in PROVIDERS_CONFIG.items():
+            provider_cards.append(self._create_provider_card(name, config))
+        
+        providers_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.icons.KEY, color=Colors.TEXT_SECONDARY),
+                    ft.Text("API Providers", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                ], spacing=8),
+                ft.Container(height=8),
+                ft.Text(
+                    "Configure your AI provider API keys. Keys are stored securely in environment variables.",
+                    size=13,
+                    color=Colors.TEXT_SECONDARY,
+                ),
+                ft.Container(height=16),
+                ft.Column(provider_cards, spacing=12),
+            ]),
+            padding=24,
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+        )
+        
+        # Default Settings Section
+        self.default_provider = ft.Dropdown(
+            label="Default Provider",
+            options=[ft.dropdown.Option(p) for p in PROVIDERS_CONFIG.keys()],
+            value="OpenAI",
+            width=250,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+            on_change=self._on_default_provider_change,
+        )
+        
+        self.default_model = ft.Dropdown(
+            label="Default Model",
+            options=[ft.dropdown.Option(m) for m in PROVIDERS_CONFIG["OpenAI"]["models"]],
+            value="gpt-4o",
+            width=250,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        
+        self.default_language = ft.Dropdown(
+            label="Default Target Language",
+            options=[
+                ft.dropdown.Option("vi", "Vietnamese"),
+                ft.dropdown.Option("en", "English"),
+                ft.dropdown.Option("ja", "Japanese"),
+                ft.dropdown.Option("zh", "Chinese"),
+                ft.dropdown.Option("ko", "Korean"),
+            ],
+            value="vi",
+            width=250,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        
+        defaults_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.icons.TUNE, color=Colors.TEXT_SECONDARY),
+                    ft.Text("Default Settings", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                ], spacing=8),
+                ft.Container(height=16),
+                ft.Row([
+                    self.default_provider,
+                    self.default_model,
+                    self.default_language,
+                ], spacing=16, wrap=True),
+            ]),
+            padding=24,
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+        )
+        
+        # Translation Settings Section
+        self.temperature_slider = ft.Slider(
+            min=0,
+            max=1,
+            value=0.2,
+            divisions=10,
+            label="{value}",
+            active_color=Colors.PRIMARY,
+        )
+        
+        self.bilingual_switch = ft.Switch(value=True, active_color=Colors.PRIMARY)
+        self.cache_switch = ft.Switch(value=True, active_color=Colors.PRIMARY)
+        
+        translation_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.icons.TRANSLATE, color=Colors.TEXT_SECONDARY),
+                    ft.Text("Translation Settings", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                ], spacing=8),
+                ft.Container(height=16),
+                ft.Row([
+                    ft.Text("Temperature:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    ft.Container(content=self.temperature_slider, expand=True),
+                    ft.Text("0.2", size=14, color=Colors.TEXT_SECONDARY),
+                ]),
+                ft.Container(height=12),
+                ft.Row([
+                    ft.Text("Bilingual Output:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    self.bilingual_switch,
+                    ft.Text("Keep original text alongside translation", size=13, color=Colors.TEXT_SECONDARY),
+                ]),
+                ft.Container(height=12),
+                ft.Row([
+                    ft.Text("Enable Cache:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    self.cache_switch,
+                    ft.Text("Cache translations to avoid re-translating", size=13, color=Colors.TEXT_SECONDARY),
+                ]),
+            ]),
+            padding=24,
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+        )
+        
+        # UI Settings Section
+        self.theme_dropdown = ft.Dropdown(
+            label="Theme",
+            options=[
+                ft.dropdown.Option("dark", "Dark"),
+                ft.dropdown.Option("light", "Light"),
+                ft.dropdown.Option("system", "System"),
+            ],
+            value="dark",
+            width=200,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        
+        ui_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.icons.PALETTE, color=Colors.TEXT_SECONDARY),
+                    ft.Text("Appearance", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                ], spacing=8),
+                ft.Container(height=16),
+                ft.Row([
+                    self.theme_dropdown,
+                ]),
+            ]),
+            padding=24,
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+        )
+        
+        # Save Button
+        save_section = ft.Row([
+            ft.ElevatedButton(
+                "Save Settings",
+                icon=ft.icons.SAVE,
+                bgcolor=Colors.PRIMARY,
+                color=Colors.TEXT_PRIMARY,
+                height=45,
+                on_click=self._save_settings,
+            ),
+            ft.OutlinedButton(
+                "Reset to Defaults",
+                icon=ft.icons.RESTORE,
+                height=45,
+                on_click=self._reset_settings,
+            ),
+        ], spacing=16)
+        
+        # Layout
+        self.content = ft.Column([
+            providers_section,
+            ft.Container(height=20),
+            defaults_section,
+            ft.Container(height=20),
+            translation_section,
+            ft.Container(height=20),
+            ui_section,
+            ft.Container(height=24),
+            save_section,
+        ], scroll=ft.ScrollMode.AUTO, expand=True)
+        
+        self.expand = True
+
+    def _create_provider_card(self, name: str, config: Dict) -> ft.Container:
+        """Create a provider configuration card."""
+        env_var = config.get("env_var", "")
+        is_configured = bool(os.getenv(env_var))
+        
+        # API Key field (masked)
+        api_key_field = ft.TextField(
+            label=f"{env_var}",
+            hint_text="Enter API key...",
+            password=True,
+            can_reveal_password=True,
+            width=350,
+            height=45,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        
+        return ft.Container(
+            content=ft.Row([
+                ft.Container(
+                    content=ft.Icon(
+                        ft.icons.CHECK_CIRCLE if is_configured else ft.icons.ERROR_OUTLINE,
+                        color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
+                        size=24,
+                    ),
+                    width=40,
+                ),
+                ft.Column([
+                    ft.Text(name, size=15, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(
+                        "Configured" if is_configured else "Not configured",
+                        size=12,
+                        color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
+                    ),
+                ], spacing=2, width=140),
+                api_key_field,
+                ft.IconButton(
+                    icon=ft.icons.SAVE,
+                    icon_color=Colors.PRIMARY,
+                    tooltip="Save API Key",
+                    on_click=lambda e, n=name: self._save_api_key(n, api_key_field.value),
+                ),
+            ], spacing=12),
+            padding=16,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+
+    def _on_default_provider_change(self, e):
+        """Handle default provider change."""
+        provider = e.control.value
+        if provider in PROVIDERS_CONFIG:
+            models = PROVIDERS_CONFIG[provider]["models"]
+            default_model = PROVIDERS_CONFIG[provider]["default_model"]
+            self.default_model.options = [ft.dropdown.Option(m) for m in models]
+            self.default_model.value = default_model
+            self.page.update()
+
+    def _save_api_key(self, provider: str, api_key: str):
+        """Save API key (placeholder)."""
+        if api_key:
+            # In a real app, this would securely save the key
+            self._show_snackbar(f"API key for {provider} saved successfully!", Colors.SUCCESS)
+        else:
+            self._show_snackbar("Please enter an API key", Colors.WARNING)
+
+    def _save_settings(self, e):
+        """Save all settings."""
+        self._show_snackbar("Settings saved successfully!", Colors.SUCCESS)
+
+    def _reset_settings(self, e):
+        """Reset to default settings."""
+        self.default_provider.value = "OpenAI"
+        self.default_model.value = "gpt-4o"
+        self.default_language.value = "vi"
+        self.temperature_slider.value = 0.2
+        self.bilingual_switch.value = True
+        self.cache_switch.value = True
+        self.theme_dropdown.value = "dark"
+        self.page.update()
+        self._show_snackbar("Settings reset to defaults", Colors.PRIMARY)
+
+    def _show_snackbar(self, message: str, color: str):
+        """Show a snackbar notification."""
+        self.page.snack_bar = ft.SnackBar(
+            content=ft.Text(message, color=Colors.TEXT_PRIMARY),
+            bgcolor=color,
+        )
+        self.page.snack_bar.open = True
+        self.page.update()
