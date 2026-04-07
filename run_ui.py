@@ -4,111 +4,22 @@ Lexora AI Desktop UI Launcher (Flet 0.21.x)
 """
 
 import sys
+import os
 from pathlib import Path
 import threading
 import time
-from dataclasses import dataclass
 
 import flet as ft
 
+# Allow importing the shared theme module from src/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-# ============ Color Palettes ============
-
-@dataclass(frozen=True)
-class _ColorPalette:
-    BACKGROUND: str
-    SURFACE: str
-    PRIMARY: str
-    TEXT_PRIMARY: str
-    TEXT_SECONDARY: str
-    ERROR: str
-    SUCCESS: str
-    WARNING: str
-
-
-_DARK = _ColorPalette(
-    BACKGROUND="#0F172A",
-    SURFACE="#1E293B",
-    PRIMARY="#06B6D4",
-    TEXT_PRIMARY="#F8FAFC",
-    TEXT_SECONDARY="#94A3B8",
-    ERROR="#F43F5E",
-    SUCCESS="#10B981",
-    WARNING="#F59E0B",
+from lexora.ui.theme import (
+    Colors,
+    apply_theme as _apply_theme,
+    cycle_theme_mode as _cycle_theme,
+    theme_mode_icon as _theme_icon,
 )
-
-_LIGHT = _ColorPalette(
-    BACKGROUND="#F0F4F8",
-    SURFACE="#FFFFFF",
-    PRIMARY="#0891B2",
-    TEXT_PRIMARY="#0F172A",
-    TEXT_SECONDARY="#475569",
-    ERROR="#E11D48",
-    SUCCESS="#059669",
-    WARNING="#D97706",
-)
-
-
-class Colors:
-    """Mutable singleton updated by :func:`_apply_theme`."""
-    BACKGROUND = _DARK.BACKGROUND
-    SURFACE = _DARK.SURFACE
-    PRIMARY = _DARK.PRIMARY
-    TEXT_PRIMARY = _DARK.TEXT_PRIMARY
-    TEXT_SECONDARY = _DARK.TEXT_SECONDARY
-    ERROR = _DARK.ERROR
-    SUCCESS = _DARK.SUCCESS
-    WARNING = _DARK.WARNING
-
-    @classmethod
-    def _from_palette(cls, p: _ColorPalette) -> None:
-        cls.BACKGROUND = p.BACKGROUND
-        cls.SURFACE = p.SURFACE
-        cls.PRIMARY = p.PRIMARY
-        cls.TEXT_PRIMARY = p.TEXT_PRIMARY
-        cls.TEXT_SECONDARY = p.TEXT_SECONDARY
-        cls.ERROR = p.ERROR
-        cls.SUCCESS = p.SUCCESS
-        cls.WARNING = p.WARNING
-
-
-def _make_flet_theme(p: _ColorPalette) -> ft.Theme:
-    return ft.Theme(
-        color_scheme=ft.ColorScheme(
-            primary=p.PRIMARY,
-            surface=p.SURFACE,
-            background=p.BACKGROUND,
-            error=p.ERROR,
-            on_primary=p.TEXT_PRIMARY,
-            on_surface=p.TEXT_PRIMARY,
-        ),
-    )
-
-
-def _apply_theme(page: ft.Page, mode: ft.ThemeMode) -> None:
-    """Switch theme on *page* and update the Colors singleton."""
-    palette = _LIGHT if mode == ft.ThemeMode.LIGHT else _DARK
-    Colors._from_palette(palette)
-    page.theme = _make_flet_theme(_LIGHT)
-    page.dark_theme = _make_flet_theme(_DARK)
-    page.theme_mode = mode
-
-
-def _cycle_theme(current: ft.ThemeMode) -> ft.ThemeMode:
-    order = [ft.ThemeMode.DARK, ft.ThemeMode.LIGHT, ft.ThemeMode.SYSTEM]
-    try:
-        idx = order.index(current)
-    except ValueError:
-        idx = 0
-    return order[(idx + 1) % len(order)]
-
-
-def _theme_icon(mode: ft.ThemeMode) -> str:
-    return {
-        ft.ThemeMode.DARK: ft.icons.DARK_MODE,
-        ft.ThemeMode.LIGHT: ft.icons.LIGHT_MODE,
-        ft.ThemeMode.SYSTEM: ft.icons.BRIGHTNESS_AUTO,
-    }.get(mode, ft.icons.DARK_MODE)
 
 
 # ============ Provider Config ============
