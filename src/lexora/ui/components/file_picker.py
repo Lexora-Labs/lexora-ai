@@ -8,15 +8,7 @@ import flet as ft
 from typing import Callable, Optional
 from pathlib import Path
 
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
+from lexora.ui.theme import Colors
 
 
 class FilePicker(ft.Container):

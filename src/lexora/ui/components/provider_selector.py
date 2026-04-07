@@ -7,15 +7,7 @@ Handles AI provider and model selection with dynamic dropdowns.
 import flet as ft
 from typing import Optional, Dict, List
 
-
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
+from lexora.ui.theme import Colors
 
 
 # Provider configurations

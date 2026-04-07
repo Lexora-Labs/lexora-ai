@@ -18,6 +18,7 @@ from lexora.ui.components.file_picker import FilePicker
 from lexora.ui.components.provider_selector import ProviderSelector
 from lexora.ui.components.progress_panel import ProgressPanel
 from lexora.ui.components.output_panel import OutputPanel
+from lexora.ui.theme import Colors
 
 
 class UIState(Enum):
@@ -27,17 +28,6 @@ class UIState(Enum):
     TRANSLATING = "translating"
     COMPLETED = "completed"
     ERROR = "error"
-
-
-# Colors (duplicated for component access)
-class Colors:
-    BACKGROUND = "#0F172A"
-    SURFACE = "#1E293B"
-    PRIMARY = "#06B6D4"
-    TEXT_PRIMARY = "#F8FAFC"
-    TEXT_SECONDARY = "#94A3B8"
-    ERROR = "#F43F5E"
-    SUCCESS = "#10B981"
 
 
 class HomeView(ft.Container):
