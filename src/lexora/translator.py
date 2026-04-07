@@ -1,9 +1,12 @@
 """Main translator module."""
 
+import logging
 from typing import Optional, List
 from pathlib import Path
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
-from .services import AIService, OpenAIService, AzureOpenAIService, AzureAIFoundryService
+from .services import AIService, OpenAIService, AzureOpenAIService, AzureAIFoundryService, QwenService
+
+logger = logging.getLogger(__name__)
 
 
 class Translator:
@@ -14,7 +17,7 @@ class Translator:
         Initialize translator.
 
         Args:
-            service: AI service to use for translation (defaults to OpenAI)
+            service: AI service to use for translation (defaults to first configured service)
         """
         self.service = service or self._get_default_service()
         self.readers: List[FileReader] = [
@@ -30,6 +33,7 @@ class Translator:
             OpenAIService(),
             AzureOpenAIService(),
             AzureAIFoundryService(),
+            QwenService(),
         ]
         
         for service in services:
@@ -40,7 +44,8 @@ class Translator:
             "No AI service is configured. Please set one of:\n"
             "- OPENAI_API_KEY for OpenAI\n"
             "- AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT for Azure OpenAI\n"
-            "- AZURE_AI_FOUNDRY_API_KEY, AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AI_FOUNDRY_MODEL for Azure AI Foundry"
+            "- AZURE_AI_FOUNDRY_API_KEY, AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AI_FOUNDRY_MODEL for Azure AI Foundry\n"
+            "- QWEN_API_KEY for Qwen (Alibaba Cloud)"
         )
 
     def _get_reader(self, file_path: str) -> FileReader:
@@ -77,15 +82,18 @@ class Translator:
 
         # Read the file
         reader = self._get_reader(input_file)
-        print(f"Reading {input_file}...")
+        logger.info("Reading %s...", input_file)
         text = reader.read(input_file)
 
         if not text.strip():
             raise ValueError("No text content found in the file")
 
         # Translate the text
-        print(f"Translating to {target_language}...")
+        logger.info("Translating to %s...", target_language)
         translated_text = self.service.translate(text, target_language, source_language)
+
+        if translated_text is None:
+            raise RuntimeError("Translation service returned no content")
 
         # Write the translated text
         output_path = Path(output_file)
@@ -94,7 +102,7 @@ class Translator:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(translated_text)
         
-        print(f"Translation saved to {output_file}")
+        logger.info("Translation saved to %s", output_file)
 
     def translate_text(
         self,
@@ -113,4 +121,7 @@ class Translator:
         Returns:
             str: Translated text
         """
-        return self.service.translate(text, target_language, source_language)
+        result = self.service.translate(text, target_language, source_language)
+        if result is None:
+            raise RuntimeError("Translation service returned no content")
+        return result

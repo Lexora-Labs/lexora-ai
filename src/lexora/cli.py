@@ -1,17 +1,25 @@
 """Command-line interface for Lexora AI."""
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from .translator import Translator
-from .services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
+from .services import OpenAIService, AzureOpenAIService, AzureAIFoundryService, QwenService
 
 
 def main():
     """Main CLI entry point."""
     # Load environment variables from .env file if it exists
     load_dotenv()
+
+    # Configure basic logging so library users see INFO messages on stderr
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
+    )
 
     parser = argparse.ArgumentParser(
         description="Lexora AI - Translate eBooks using AI",
@@ -27,6 +35,9 @@ Examples:
   # Translate with source language specified
   lexora translate input.md output.txt --target de --source en
 
+  # Translate using Qwen (Alibaba Cloud)
+  lexora translate input.epub output.txt --target zh --service qwen
+
 Supported file formats:
   - EPUB (.epub)
   - MOBI (.mobi)
@@ -37,6 +48,7 @@ Supported AI services:
   - openai: OpenAI (requires OPENAI_API_KEY)
   - azure-openai: Azure OpenAI (requires AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT)
   - azure-foundry: Azure AI Foundry (requires AZURE_AI_FOUNDRY_API_KEY, AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AI_FOUNDRY_MODEL)
+  - qwen: Qwen / Alibaba Cloud DashScope (requires QWEN_API_KEY)
         """
     )
 
@@ -57,7 +69,7 @@ Supported AI services:
     )
     translate_parser.add_argument(
         '--service',
-        choices=['openai', 'azure-openai', 'azure-foundry'],
+        choices=['openai', 'azure-openai', 'azure-foundry', 'qwen'],
         help='AI service to use (auto-detect if not specified)'
     )
 
@@ -74,6 +86,8 @@ Supported AI services:
                     service = AzureOpenAIService()
                 elif args.service == 'azure-foundry':
                     service = AzureAIFoundryService()
+                elif args.service == 'qwen':
+                    service = QwenService()
                 
                 if not service.is_configured():
                     print(f"Error: {args.service} is not properly configured", file=sys.stderr)

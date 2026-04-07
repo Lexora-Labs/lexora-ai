@@ -223,3 +223,9 @@ book5.jsonl
 # Test/debug files
 test_auth.py
 docs/vibe-context.md
+
+# Virtual environment (local venv artifacts committed by mistake)
+pyvenv.cfg
+bin/
+lib/
+lib64

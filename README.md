@@ -39,6 +39,9 @@ AZURE_OPENAI_DEPLOYMENT=your_deployment_name
 AZURE_AI_FOUNDRY_API_KEY=your_azure_ai_foundry_key_here
 AZURE_AI_FOUNDRY_ENDPOINT=https://your-endpoint.inference.ai.azure.com
 AZURE_AI_FOUNDRY_MODEL=your_model_name
+
+# Or Qwen (Alibaba Cloud DashScope)
+QWEN_API_KEY=your_dashscope_api_key_here
 ```
 
 See `.env.example` for a template.
@@ -110,6 +113,9 @@ print(translated)
 
 3. **Azure AI Foundry**: Azure AI Foundry inference service
    - Requires: `AZURE_AI_FOUNDRY_API_KEY`, `AZURE_AI_FOUNDRY_ENDPOINT`, `AZURE_AI_FOUNDRY_MODEL`
+
+4. **Qwen (Alibaba Cloud)**: Qwen models via DashScope
+   - Requires: `QWEN_API_KEY`
 
 ## Development
 
