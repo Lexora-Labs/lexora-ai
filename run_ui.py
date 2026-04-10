@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
 """
 Lexora AI Desktop UI Launcher (Flet 0.21.x)
+
+Usage:
+    python run_ui.py              # Opens browser automatically (default)
+    python run_ui.py --no-browser # Desktop app only, no browser
+    python run_ui.py -nb          # Same as --no-browser
 """
 
 import sys
 import os
+import socket
+import base64
+import asyncio
 from pathlib import Path
 import threading
 import time
+from typing import Optional
+import argparse
 
 import flet as ft
 
@@ -20,6 +30,62 @@ from lexora.ui.theme import (
     cycle_theme_mode as _cycle_theme,
     theme_mode_icon as _theme_icon,
 )
+from lexora.ui.layout.main_layout import MainLayout
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+BRANDING_DIR = REPO_ROOT / "assets" / "branding"
+BRANDING_APP_ICON_ICO = BRANDING_DIR / "lexora-ai-icon.ico"
+BRANDING_APP_ICON_ASSET_PATH = "branding/lexora-ai-icon.ico"
+BRANDING_LOGO_DARK_SVG = BRANDING_DIR / "lexora-ai-logo-dark-v2.2.svg"
+BRANDING_LOGO_LIGHT_SVG = BRANDING_DIR / "lexora-ai-logo-light-v2.2.svg"
+BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
+
+
+def _resolve_logo_path(theme_mode: ft.ThemeMode, page: ft.Page | None = None) -> Path:
+    """Resolve logo path based on current theme mode."""
+    if theme_mode == ft.ThemeMode.LIGHT:
+        preferred = BRANDING_LOGO_LIGHT_SVG
+    elif theme_mode == ft.ThemeMode.SYSTEM and page is not None and hasattr(page, "platform_brightness"):
+        preferred = BRANDING_LOGO_LIGHT_SVG if page.platform_brightness == ft.Brightness.LIGHT else BRANDING_LOGO_DARK_SVG
+    else:
+        preferred = BRANDING_LOGO_DARK_SVG
+
+    if preferred.exists():
+        return preferred
+    return BRANDING_LOGO_FALLBACK_SVG
+
+
+def _load_logo_data_uri(theme_mode: ft.ThemeMode, page: ft.Page | None = None) -> str | None:
+    """Return branding SVG as data URI for reliable browser rendering."""
+    logo_path = _resolve_logo_path(theme_mode, page)
+    if not logo_path.exists():
+        return None
+    svg_bytes = logo_path.read_bytes()
+    encoded = base64.b64encode(svg_bytes).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
+    """Set app/window icon and favicon from the branding ICO when available."""
+    logo_path = _resolve_logo_path(theme_mode, page)
+    logo_data_uri = _load_logo_data_uri(theme_mode, page)
+    has_svg = bool(logo_data_uri) or logo_path.exists()
+    has_ico = BRANDING_APP_ICON_ICO.exists()
+    if not has_svg and not has_ico:
+        return
+
+    icon_path = str((BRANDING_APP_ICON_ICO if has_ico else logo_path).resolve())
+    if hasattr(page, "window") and hasattr(page.window, "icon"):
+        page.window.icon = icon_path
+    elif hasattr(page, "window_icon"):
+        page.window_icon = icon_path
+
+    if hasattr(page, "favicon"):
+        if has_ico:
+            page.favicon = BRANDING_APP_ICON_ASSET_PATH
+        elif has_svg:
+            page.favicon = logo_data_uri or logo_path.as_posix()
 
 
 # ============ Provider Config ============
@@ -213,7 +279,7 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         bgcolor=Colors.SURFACE,
         border_radius=10,
     )
-    
+
     progress_bar = ft.ProgressBar(value=0, bgcolor=Colors.BACKGROUND, color=Colors.PRIMARY, bar_height=8)
     progress_text = ft.Text("0%", size=16, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
     status_text = ft.Text("Ready to translate", size=14, color=Colors.TEXT_SECONDARY)
@@ -503,200 +569,116 @@ def create_settings_view(page: ft.Page) -> ft.Control:
 
 # ============ Main Layout ============
 def main(page: ft.Page):
-    """Main UI entry point with sidebar layout."""
+    """Main UI entry point using shared MainLayout + Sidebar components."""
 
-    # Page config
+    current_theme = {"mode": ft.ThemeMode.SYSTEM}
+
     page.title = "Lexora AI"
-    page.window.width = 1100
-    page.window.height = 750
-    page.window.min_width = 800
-    page.window.min_height = 600
+    _set_app_icon(page, current_theme["mode"])
+    if hasattr(page, "window"):
+        page.window.width = 1100
+        page.window.height = 750
+        page.window.min_width = 800
+        page.window.min_height = 600
+    else:
+        page.window_width = 1100
+        page.window_height = 750
+        page.window_min_width = 800
+        page.window_min_height = 600
     page.padding = 0
 
-    # Apply initial theme (dark)
-    current_theme = {"mode": ft.ThemeMode.DARK}
     _apply_theme(page, current_theme["mode"])
     page.bgcolor = Colors.BACKGROUND
 
-    # Current view state
-    current_index = {"value": 1}  # Start on Translate page
+    layout_ref: dict[str, Optional[MainLayout]] = {"layout": None}
 
-    # Views container
-    content_area = ft.Container(expand=True, padding=24)
-
-    # Page configs
-    PAGE_CONFIG = {
-        0: {"title": "Dashboard", "subtitle": "Overview of your translations"},
-        1: {"title": "Translate", "subtitle": "Translate eBooks with AI"},
-        2: {"title": "Library", "subtitle": "Your translated books"},
-        3: {"title": "Jobs", "subtitle": "Translation queue and history"},
-        4: {"title": "Settings", "subtitle": "Application preferences"},
+    view_builders = {
+        0: lambda: create_translate_view(page),
+        1: lambda: create_library_view(page),
+        2: lambda: create_jobs_view(page),
+        3: lambda: create_settings_view(page),
     }
 
-    # Header texts (refs so we can update on nav change)
-    header_title = ft.Text("Translate", size=24, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
-    header_subtitle = ft.Text("Translate eBooks with AI", size=14, color=Colors.TEXT_SECONDARY)
+    def _build_views() -> dict[int, ft.Control]:
+        return {idx: build() for idx, build in view_builders.items()}
 
-    # Theme toggle button (declared early; handler added below)
-    theme_btn = ft.IconButton(
-        icon=_theme_icon(current_theme["mode"]),
-        icon_color=Colors.TEXT_SECONDARY,
-        tooltip="Toggle theme",
-    )
-
-    header = ft.Container(
-        content=ft.Row([
-            ft.Column([header_title, header_subtitle], spacing=2),
-            ft.Container(expand=True),
-            theme_btn,
-            ft.IconButton(icon=ft.icons.NOTIFICATIONS_OUTLINED, icon_color=Colors.TEXT_SECONDARY),
-            ft.IconButton(icon=ft.icons.ACCOUNT_CIRCLE_OUTLINED, icon_color=Colors.TEXT_SECONDARY),
-        ]),
-        padding=ft.padding.symmetric(horizontal=24, vertical=16),
-        bgcolor=Colors.BACKGROUND,
-        border=ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE)),
-    )
-
-    # Views cache – cleared on theme switch so views rebuild with new colors
-    views_cache = {}
-
-    def navigate_to(index: int):
-        """Navigate to a screen by index."""
-        nav_rail.selected_index = index
-        on_nav_change_internal(index)
-
-    def on_nav_change_internal(index: int):
-        """Internal navigation handler."""
-        current_index["value"] = index
-        config = PAGE_CONFIG.get(index, PAGE_CONFIG[0])
-        header_title.value = config["title"]
-        header_subtitle.value = config["subtitle"]
-        content_area.content = get_view(index)
-        page.update()
-
-    def get_view(index: int) -> ft.Control:
-        if index not in views_cache:
-            if index == 0:
-                views_cache[index] = create_dashboard_view(page, navigate_to)
-            elif index == 1:
-                views_cache[index] = create_translate_view(page)
-            elif index == 2:
-                views_cache[index] = create_library_view(page)
-            elif index == 3:
-                views_cache[index] = create_jobs_view(page)
-            elif index == 4:
-                views_cache[index] = create_settings_view(page)
-            else:
-                views_cache[index] = ft.Text("Page not found", color=Colors.TEXT_PRIMARY)
-        return views_cache[index]
-
-    def on_nav_change(e):
-        index = e.control.selected_index
-        on_nav_change_internal(index)
-
-    def _refresh_chrome_colors():
-        """Apply Colors singleton values to all persistent chrome controls."""
-        page.bgcolor = Colors.BACKGROUND
-        header.bgcolor = Colors.BACKGROUND
-        header.border = ft.border.only(bottom=ft.BorderSide(1, Colors.SURFACE))
-        nav_rail.bgcolor = Colors.SURFACE
-        nav_rail.indicator_color = Colors.PRIMARY
-        sidebar.bgcolor = Colors.SURFACE
-
-    def on_toggle_theme(e):
-        """Cycle through DARK → LIGHT → SYSTEM and rebuild views."""
+    def _toggle_theme(e: ft.ControlEvent) -> None:
         next_mode = _cycle_theme(current_theme["mode"])
         current_theme["mode"] = next_mode
         _apply_theme(page, next_mode)
+        _set_app_icon(page, next_mode)
 
-        theme_btn.icon = _theme_icon(next_mode)
-        _refresh_chrome_colors()
+        layout = layout_ref["layout"]
+        if layout is not None:
+            layout.refresh_theme(theme_icon=_theme_icon(next_mode))
+            for idx, build in view_builders.items():
+                layout.set_view(idx, build())
 
-        # Clear view cache so screens rebuild with new palette
-        views_cache.clear()
-        content_area.content = get_view(current_index["value"])
-
+        page.bgcolor = Colors.BACKGROUND
         page.update()
 
-    theme_btn.on_click = on_toggle_theme
-
-    # Sidebar state
-    sidebar_expanded = {"value": True}
-
-    def toggle_sidebar(e):
-        sidebar_expanded["value"] = not sidebar_expanded["value"]
-        nav_rail.extended = sidebar_expanded["value"]
-        toggle_btn.icon = ft.icons.MENU_OPEN if sidebar_expanded["value"] else ft.icons.MENU
-        logo_text.visible = sidebar_expanded["value"]
-        page.update()
-
-    # Navigation Rail
-    nav_rail = ft.NavigationRail(
-        selected_index=current_index["value"],
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=80,
-        min_extended_width=200,
-        extended=True,
-        bgcolor=Colors.SURFACE,
-        indicator_color=Colors.PRIMARY,
-        on_change=on_nav_change,
-        destinations=[
-            ft.NavigationRailDestination(icon=ft.icons.DASHBOARD_OUTLINED, selected_icon=ft.icons.DASHBOARD, label="Dashboard"),
-            ft.NavigationRailDestination(icon=ft.icons.TRANSLATE_OUTLINED, selected_icon=ft.icons.TRANSLATE, label="Translate"),
-            ft.NavigationRailDestination(icon=ft.icons.LIBRARY_BOOKS_OUTLINED, selected_icon=ft.icons.LIBRARY_BOOKS, label="Library"),
-            ft.NavigationRailDestination(icon=ft.icons.WORK_HISTORY_OUTLINED, selected_icon=ft.icons.WORK_HISTORY, label="Jobs"),
-            ft.NavigationRailDestination(icon=ft.icons.SETTINGS_OUTLINED, selected_icon=ft.icons.SETTINGS, label="Settings"),
-        ],
+    main_layout = MainLayout(
+        page=page,
+        views=_build_views(),
+        on_toggle_theme=_toggle_theme,
+        theme_icon=_theme_icon(current_theme["mode"]),
     )
+    layout_ref["layout"] = main_layout
 
-    # Logo
-    logo_text = ft.Text("Lexora", size=20, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
-    logo = ft.Container(
-        content=ft.Row([
-            ft.Icon(ft.icons.AUTO_STORIES, color=Colors.PRIMARY, size=28),
-            logo_text,
-        ], spacing=8, alignment=ft.MainAxisAlignment.CENTER),
-        padding=ft.padding.symmetric(vertical=16),
-    )
-
-    # Toggle button
-    toggle_btn = ft.IconButton(
-        icon=ft.icons.MENU_OPEN,
-        icon_color=Colors.TEXT_SECONDARY,
-        tooltip="Toggle sidebar",
-        on_click=toggle_sidebar,
-    )
-
-    # Sidebar
-    sidebar = ft.Container(
-        content=ft.Column([
-            logo,
-            ft.Divider(height=1, color=Colors.BACKGROUND),
-            ft.Container(content=nav_rail, expand=True),
-            ft.Divider(height=1, color=Colors.BACKGROUND),
-            ft.Container(content=toggle_btn, alignment=ft.alignment.center, padding=8),
-        ], spacing=0, expand=True),
-        bgcolor=Colors.SURFACE,
-    )
-
-    # Initial content
-    content_area.content = get_view(current_index["value"])
-
-    # Right panel
-    right_panel = ft.Column([
-        header,
-        content_area,
-    ], spacing=0, expand=True)
-
-    # Main layout
-    page.add(
-        ft.Row([
-            sidebar,
-            ft.VerticalDivider(width=1, color=Colors.SURFACE),
-            ft.Container(content=right_panel, expand=True, bgcolor=Colors.BACKGROUND),
-        ], spacing=0, expand=True)
-    )
+    page.add(main_layout)
 
 
 if __name__ == "__main__":
-    ft.app(target=main, view=ft.WEB_BROWSER, port=8550)
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Lexora AI Desktop UI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python run_ui.py     # Open in browser automatically (default)
+  python run_ui.py -nb # Skip browser, run server only on localhost
+        """,
+    )
+    parser.add_argument(
+        "--no-browser", "-nb",
+        action="store_true",
+        help="Skip auto-opening browser (server runs on localhost only)",
+    )
+    args = parser.parse_args()
+
+    if sys.platform.startswith("win") and not args.no_browser:
+        # Avoid Proactor transport shutdown races on Windows (WinError 10054).
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    def _is_port_available(port: int) -> bool:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+    def _pick_port(default: int = 8550) -> int:
+        env_port = os.getenv("LEXORA_UI_PORT")
+        if env_port:
+            try:
+                requested = int(env_port)
+                if _is_port_available(requested):
+                    return requested
+            except ValueError:
+                pass
+
+        # Use OS-assigned ephemeral port to avoid stale/default-port collisions.
+        return 0
+
+    port = _pick_port()
+    
+    # Determine view mode
+    # Default: WEB_BROWSER (auto-opens browser)
+    # With --no-browser: FLET_APP_HIDDEN (runs without opening browser window)
+    view_mode = ft.AppView.FLET_APP_HIDDEN if args.no_browser else ft.AppView.WEB_BROWSER
+    
+    print(f"Starting Lexora UI on port {port if port else 'auto'}")
+    print(f"View mode: {'No browser auto-open (hidden app)' if args.no_browser else 'Web Browser (auto-open)'}")
+    
+    ft.app(target=main, view=view_mode, port=port, assets_dir=str(REPO_ROOT / "assets"))
