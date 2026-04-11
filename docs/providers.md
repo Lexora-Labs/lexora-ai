@@ -7,7 +7,14 @@ Lexora-AI supports multiple AI translation providers via the Strategy Pattern. A
 ## Quick Start
 
 ```python
-from lexora.providers import OpenAIProvider, AzureOpenAIProvider, GeminiProvider, AnthropicProvider, QwenProvider
+from lexora.providers import (
+    OpenAIProvider,
+    AzureOpenAIProvider,
+    AzureAIFoundryProvider,
+    GeminiProvider,
+    AnthropicProvider,
+    QwenProvider,
+)
 from lexora.core import TranslationConfig
 
 # Pick any provider
@@ -62,6 +69,7 @@ Azure-hosted OpenAI models.
 |----------|----------|-------------|
 | `AZURE_OPENAI_ENDPOINT` | ✅ | Azure endpoint URL |
 | `AZURE_OPENAI_KEY` | ✅ | API key |
+| `AZURE_OPENAI_API_KEY` | ❌ | Compatibility alias for API key |
 | `AZURE_OPENAI_DEPLOYMENT` | ✅ | Deployment name |
 | `AZURE_OPENAI_API_VERSION` | ❌ | API version (default: `2024-02-01`) |
 
@@ -84,7 +92,30 @@ provider = AzureOpenAIProvider(
 
 ---
 
-### 3. Google Gemini
+### 3. Azure AI Foundry
+
+Azure AI Foundry inference endpoint.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AZURE_AI_FOUNDRY_API_KEY` | ✅ | API key |
+| `AZURE_AI_FOUNDRY_ENDPOINT` | ✅ | Inference endpoint |
+| `AZURE_AI_FOUNDRY_MODEL` | ✅ | Model name |
+
+```python
+from lexora.providers import AzureAIFoundryProvider
+
+provider = AzureAIFoundryProvider(
+    api_key="...",
+    endpoint="https://your-endpoint.inference.ai.azure.com",
+    model="gpt-4.1",
+    temperature=0.2,
+)
+```
+
+---
+
+### 4. Google Gemini
 
 Google's Gemini models via Google AI Studio.
 
@@ -114,7 +145,7 @@ pip install google-generativeai
 
 ---
 
-### 4. Anthropic Claude
+### 5. Anthropic Claude
 
 Anthropic's Claude models.
 
@@ -146,7 +177,7 @@ pip install anthropic
 
 ---
 
-### 5. Alibaba Qwen
+### 6. Alibaba Qwen
 
 Alibaba's Qwen (Tongyi Qianwen) models via DashScope API.
 
@@ -189,6 +220,11 @@ OPENAI_API_KEY=sk-...
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
 AZURE_OPENAI_KEY=...
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
+
+# Azure AI Foundry
+AZURE_AI_FOUNDRY_API_KEY=...
+AZURE_AI_FOUNDRY_ENDPOINT=https://your-endpoint.inference.ai.azure.com
+AZURE_AI_FOUNDRY_MODEL=gpt-4.1
 
 # Google Gemini
 GOOGLE_API_KEY=...

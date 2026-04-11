@@ -6,6 +6,27 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+
+def _build_fake_provider():
+    from lexora.core import BaseTranslator, TranslationConfig, TranslationResult
+
+    class FakeProvider(BaseTranslator):
+        @property
+        def provider_name(self) -> str:
+            return "fake"
+
+        def is_configured(self) -> bool:
+            return True
+
+        def translate_text(self, text: str, config: TranslationConfig) -> TranslationResult:
+            translated = f"[{config.target_language}] {text}"
+            return TranslationResult(translated_content=translated, bilingual_ast=None)
+
+        def translate_batch(self, texts: list, config: TranslationConfig) -> list:
+            return [self.translate_text(text, config) for text in texts]
+
+    return FakeProvider()
+
 def test_imports():
     """Test that all modules can be imported."""
     print("Testing imports...")
@@ -14,8 +35,15 @@ def test_imports():
         from lexora import Translator
         print("✓ Translator imported")
         
-        from lexora.services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
-        print("✓ Services imported")
+        from lexora.providers import (
+            OpenAIProvider,
+            AzureOpenAIProvider,
+            AzureAIFoundryProvider,
+            GeminiProvider,
+            AnthropicProvider,
+            QwenProvider,
+        )
+        print("✓ Providers imported")
         
         from lexora.readers import EpubReader, MobiReader, WordReader, MarkdownReader
         print("✓ Readers imported")
@@ -66,27 +94,54 @@ def test_reader_supports():
         return False
 
 
-def test_service_configuration():
-    """Test AI service configuration detection."""
-    print("\nTesting AI service configuration...")
+def test_provider_configuration():
+    """Test AI provider configuration detection."""
+    print("\nTesting AI provider configuration...")
     
     try:
-        from lexora.services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
+        from lexora.providers import (
+            OpenAIProvider,
+            AzureOpenAIProvider,
+            AzureAIFoundryProvider,
+        )
         
         # These should not raise errors even without configuration
-        openai_service = OpenAIService()
-        azure_openai_service = AzureOpenAIService()
-        azure_foundry_service = AzureAIFoundryService()
+        openai_provider = OpenAIProvider()
+        azure_openai_provider = AzureOpenAIProvider()
+        azure_foundry_provider = AzureAIFoundryProvider()
         
         # Check configuration status (should be False without env vars)
-        print(f"  OpenAI configured: {openai_service.is_configured()}")
-        print(f"  Azure OpenAI configured: {azure_openai_service.is_configured()}")
-        print(f"  Azure AI Foundry configured: {azure_foundry_service.is_configured()}")
+        print(f"  OpenAI configured: {openai_provider.is_configured()}")
+        print(f"  Azure OpenAI configured: {azure_openai_provider.is_configured()}")
+        print(f"  Azure AI Foundry configured: {azure_foundry_provider.is_configured()}")
         
-        print("\n✓ Service initialization tests passed!")
+        print("\n✓ Provider initialization tests passed!")
         return True
     except Exception as e:
-        print(f"\n✗ Service configuration test failed: {e}")
+        print(f"\n✗ Provider configuration test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_translator_with_provider():
+    """Test Translator against the canonical provider interface."""
+    print("\nTesting Translator with BaseTranslator provider...")
+
+    try:
+        from lexora import Translator
+
+        translator = Translator(provider=_build_fake_provider())
+        translated = translator.translate_text(
+            text="Hello, world!",
+            target_language="es",
+        )
+
+        assert translated == "[es] Hello, world!"
+        print("✓ Translator uses BaseTranslator providers correctly")
+        return True
+    except Exception as e:
+        print(f"\n✗ Translator/provider integration test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -201,6 +256,51 @@ def test_theme_system():
         return False
 
 
+def test_translation_cache_key_stability():
+    """Test cache key stability and fingerprint isolation behavior."""
+    print("\nTesting translation cache key stability...")
+
+    try:
+        from lexora.core import CacheFingerprint, build_cache_key, hash_glossary
+
+        fp1 = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"hello": "xin chao"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+        fp2 = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"hello": "xin chao"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+
+        content = "Hello, world!"
+        key1 = build_cache_key(content, fp1)
+        key1_repeat = build_cache_key(content, fp1)
+        key2 = build_cache_key(content, fp2)
+
+        assert key1 == key1_repeat, "Cache key must be deterministic"
+        assert key1 == key2, "Display mode should not affect translation cache key"
+        print("✓ Cache key stability and mode-agnostic reuse work")
+        return True
+
+    except Exception as e:
+        print(f"\n✗ Translation cache key test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -210,9 +310,11 @@ def main():
     results = []
     results.append(("Imports", test_imports()))
     results.append(("Format Detection", test_reader_supports()))
-    results.append(("Service Configuration", test_service_configuration()))
+    results.append(("Provider Configuration", test_provider_configuration()))
+    results.append(("Translator Provider", test_translator_with_provider()))
     results.append(("Markdown Reader", test_markdown_reader()))
     results.append(("Theme System", test_theme_system()))
+    results.append(("Translation Cache Key", test_translation_cache_key_stability()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")

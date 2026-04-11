@@ -1,0 +1,76 @@
+<svg width="600" height="300" viewBox="0 0 600 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradient cho thanh đứng (Dọc): Sáng ở trên, đậm dần xuống dưới -->
+    <linearGradient id="vBarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00F0FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0078FF;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Gradient cho thanh ngang (Dưới): Đậm ở gốc (giao thoa), sáng ở đuôi -->
+    <linearGradient id="hBarGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#003A80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00D1FF;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Hiệu ứng bóng đổ để tạo chiều sâu giữa 2 lớp thanh -->
+    <filter id="layerShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4" />
+      <feOffset dx="0" dy="3" result="offsetblur" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.45" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Hiệu ứng phát sáng cho Ngôi sao AI -->
+    <filter id="aiSparkleGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Nền Navy Blueprint chuyên nghiệp -->
+  <rect width="600" height="300" fill="#001429" rx="15" />
+
+  <!-- BIỂU TƯỢNG LEXORA AI (Cấu trúc L Hybrid + Optimized Gradient) -->
+  <g transform="translate(80, 60)">
+    
+    <!-- 1. LỚP DƯỚI: THANH NGANG (Bo tròn 2 đầu - Capsule) -->
+    <!-- Dải màu từ đậm sang sáng để tạo cảm giác "vươn ra" từ gáy sách -->
+    <rect x="0" y="80" width="125" height="42" rx="21" fill="url(#hBarGrad)" />
+    
+    <!-- 2. LỚP TRÊN: THANH DỌC (Bo tròn trên, phẳng dưới) -->
+    <!-- Dải màu từ sáng xuống đậm để tập trung thị giác vào phần đầu -->
+    <path d="M0 21 Q0 0 21 0 Q42 0 42 21 L42 122 L0 122 Z" 
+          fill="url(#vBarGrad)" 
+          filter="url(#layerShadow)" />
+          
+    <!-- 3. NGÔI SAO SPARKLE (AI) - NẰM TRONG LÒNG CHỮ L -->
+    <!-- Đặt tại góc giao thoa, biểu trưng cho hạt nhân xử lý tri thức -->
+    <g transform="translate(68, 85)" filter="url(#aiSparkleGlow)">
+      <!-- Sparkle trắng tinh khiết (AI Core) -->
+      <path d="M0 -22 Q2.5 -3 22 0 Q2.5 3 0 22 Q-2.5 3 -22 0 Q-2.5 -3 0 -22 Z" fill="#FFFFFF" />
+      <!-- Điểm sáng phụ Cyan tạo nét công nghệ hiện đại -->
+      <circle cx="18" cy="-14" r="3.5" fill="#00F0FF" />
+    </g>
+  </g>
+
+  <!-- TÊN CÔNG TY LEXORA -->
+  <g transform="translate(265, 145)">
+    <!-- Font Segoe UI Extra Bold mạnh mẽ, hiện đại -->
+    <text font-family="Segoe UI, Arial, sans-serif" font-weight="900" font-size="82" fill="#FFFFFF" letter-spacing="-2.5">
+      Lex<tspan fill="#00F0FF">ora</tspan>
+    </text>
+    
+    <!-- Slogan phong cách kỹ thuật Blueprint -->
+    <text x="3" y="42" font-family="Consolas, monospace" font-size="16" fill="#5A8BB0" letter-spacing="6" font-weight="bold">
+      AI BOOK TRANSLATION
+    </text>
+    
+    <!-- Đường gạch chân kỹ thuật mờ -->
+    <rect y="58" width="230" height="3" rx="1.5" fill="#00F0FF" opacity="0.2" />
+  </g>
+</svg>

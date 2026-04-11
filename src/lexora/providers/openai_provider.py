@@ -122,7 +122,7 @@ class OpenAIProvider(BaseTranslator):
             result = TranslationResult(
                 translated_content=translated,
                 bilingual_ast=BilingualAST(
-                    source_language=config.source_language,
+                    source_language=config.source_language or "",
                     target_language=config.target_language,
                     nodes=[node],
                 ),

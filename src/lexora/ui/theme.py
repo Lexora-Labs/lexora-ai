@@ -43,6 +43,7 @@ class ColorPalette:
     SUCCESS: str
     WARNING: str
     DIVIDER: str
+    INFO: str               # accent color for variety
 
 
 # Lexora Blueprint – Dark (default)
@@ -58,6 +59,7 @@ DARK_PALETTE = ColorPalette(
     SUCCESS="#10B981",          # Emerald Green
     WARNING="#F59E0B",          # Amber
     DIVIDER="#1E293B",          # Same as surface for subtle dividers
+    INFO="#7C3AED",             # Violet (accent for variety)
 )
 
 # Lexora Blueprint – Light
@@ -73,6 +75,7 @@ LIGHT_PALETTE = ColorPalette(
     SUCCESS="#059669",          # Emerald
     WARNING="#D97706",          # Amber (slightly darker)
     DIVIDER="#CBD5E1",          # Light Slate for dividers
+    INFO="#6D28D9",             # Deeper violet for light mode contrast
 )
 
 
@@ -106,6 +109,7 @@ class Colors:
     SUCCESS: str = DARK_PALETTE.SUCCESS
     WARNING: str = DARK_PALETTE.WARNING
     DIVIDER: str = DARK_PALETTE.DIVIDER
+    INFO: str = DARK_PALETTE.INFO
 
     _lock: threading.Lock = threading.Lock()
 
@@ -124,6 +128,7 @@ class Colors:
             cls.SUCCESS = palette.SUCCESS
             cls.WARNING = palette.WARNING
             cls.DIVIDER = palette.DIVIDER
+            cls.INFO = palette.INFO
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +145,7 @@ def _make_color_scheme(palette: ColorPalette) -> ft.ColorScheme:
         background=palette.BACKGROUND,
         error=palette.ERROR,
         on_primary=palette.TEXT_PRIMARY,
+        on_primary_container=palette.TEXT_PRIMARY,
         on_surface=palette.TEXT_PRIMARY,
         on_background=palette.TEXT_PRIMARY,
         on_error=palette.TEXT_PRIMARY,
@@ -172,17 +178,22 @@ LIGHT_THEME = make_flet_theme(LIGHT_PALETTE)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def get_palette(theme_mode: ft.ThemeMode) -> ColorPalette:
+def get_palette(theme_mode: ft.ThemeMode, page: Optional[ft.Page] = None) -> ColorPalette:
     """
     Return the appropriate :class:`ColorPalette` for *theme_mode*.
 
-    ``ft.ThemeMode.SYSTEM`` falls back to :data:`DARK_PALETTE` as a safe
-    default; callers that want true OS-level detection should inspect the
-    ``page.platform_brightness`` value after the page is mounted.
+    For ``ft.ThemeMode.SYSTEM``, checks ``page.platform_brightness`` if page
+    is provided; otherwise falls back to :data:`DARK_PALETTE`.
     """
     if theme_mode == ft.ThemeMode.LIGHT:
         return LIGHT_PALETTE
-    return DARK_PALETTE  # DARK and SYSTEM both default to dark palette
+    elif theme_mode == ft.ThemeMode.SYSTEM and page is not None and hasattr(page, "platform_brightness"):
+        return (
+            LIGHT_PALETTE
+            if page.platform_brightness == ft.Brightness.LIGHT
+            else DARK_PALETTE
+        )
+    return DARK_PALETTE  # DARK and SYSTEM (without page) default to dark palette
 
 
 def apply_theme(page: ft.Page, theme_mode: ft.ThemeMode) -> ColorPalette:
@@ -202,7 +213,7 @@ def apply_theme(page: ft.Page, theme_mode: ft.ThemeMode) -> ColorPalette:
     page.dark_theme = DARK_THEME
     page.theme_mode = theme_mode
 
-    palette = get_palette(theme_mode)
+    palette = get_palette(theme_mode, page)
     Colors.update_from_palette(palette)
     return palette
 

@@ -10,15 +10,45 @@ Layout:
 - Output
 """
 
+import base64
 import flet as ft
 from typing import Optional
 from enum import Enum
+from pathlib import Path
 
 from lexora.ui.components.file_picker import FilePicker
 from lexora.ui.components.provider_selector import ProviderSelector
 from lexora.ui.components.progress_panel import ProgressPanel
 from lexora.ui.components.output_panel import OutputPanel
 from lexora.ui.theme import Colors
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+BRANDING_DIR = REPO_ROOT / "assets" / "branding"
+BRANDING_LOGO_DARK_SVG = BRANDING_DIR / "lexora-ai-logo-dark-v2.2.svg"
+BRANDING_LOGO_LIGHT_SVG = BRANDING_DIR / "lexora-ai-logo-light-v2.2.svg"
+BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
+
+
+def _resolve_logo_path(theme_mode: ft.ThemeMode) -> Path:
+    """Return the best logo asset for the active theme."""
+    if theme_mode == ft.ThemeMode.LIGHT:
+        preferred = BRANDING_LOGO_LIGHT_SVG
+    else:
+        preferred = BRANDING_LOGO_DARK_SVG
+    if preferred.exists():
+        return preferred
+    return BRANDING_LOGO_FALLBACK_SVG
+
+
+def _load_logo_data_uri(theme_mode: ft.ThemeMode) -> str | None:
+    """Embed the SVG so the header logo renders reliably in Flet."""
+    logo_path = _resolve_logo_path(theme_mode)
+    if not logo_path.exists():
+        return None
+    svg_bytes = logo_path.read_bytes()
+    encoded = base64.b64encode(svg_bytes).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 class UIState(Enum):
@@ -100,14 +130,28 @@ class HomeView(ft.Container):
 
     def _build_header(self) -> ft.Container:
         """Build the app header."""
+        logo_data_uri = _load_logo_data_uri(self.page.theme_mode)
+        if logo_data_uri:
+            logo = ft.Image(src=logo_data_uri, width=36, height=36, fit=ft.ImageFit.CONTAIN)
+        else:
+            logo = ft.Icon(ft.icons.AUTO_STORIES, size=36, color=Colors.PRIMARY)
+
         return ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text(
-                        "Lexora AI",
-                        size=28,
-                        weight=ft.FontWeight.BOLD,
-                        color=Colors.TEXT_PRIMARY,
+                    ft.Row(
+                        controls=[
+                            logo,
+                            ft.Text(
+                                "Lexora AI 1.0",
+                                size=28,
+                                weight=ft.FontWeight.BOLD,
+                                color=Colors.TEXT_PRIMARY,
+                            ),
+                        ],
+                        spacing=12,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Text(
                         "AI-powered eBook Translation",
@@ -180,9 +224,82 @@ class HomeView(ft.Container):
         self.state = UIState.TRANSLATING
         self._update_ui_for_translating()
         
-        # TODO: Run translation async
-        # For now, simulate progress
-        self._simulate_translation()
+        # Run translation async
+        import threading
+        threading.Thread(target=self._run_translation, daemon=True).start()
+
+    def _run_translation(self):
+        """Run the actual Lexora pipeline targeting the selected file."""
+        import os
+        from pathlib import Path
+        from lexora.translator import Translator
+        from lexora.providers import create_provider
+
+        try:
+            # 1. Get configurations from ProviderSelector
+            provider_label = self.provider_selector.provider_dropdown.value
+            model_name = self.provider_selector.model_dropdown.value
+            target_lang = self.provider_selector.language_dropdown.value
+
+            # Map UI to canonical
+            ui_to_canonical = {
+                "OpenAI": "openai",
+                "Azure OpenAI": "azure-openai",
+                "Gemini": "gemini",
+                "Anthropic": "anthropic",
+                "Qwen": "qwen",
+            }
+            canonical_name = ui_to_canonical.get(provider_label)
+            if not canonical_name:
+                raise ValueError(f"Unsupported provider: {provider_label}")
+            
+            provider_kwargs = {"debug": False}
+            if canonical_name == "azure-openai":
+                provider_kwargs["deployment"] = model_name
+            else:
+                provider_kwargs["model"] = model_name
+                
+            self.progress_panel.set_progress(0.1, f"Configuring {provider_label}...")
+            self.page.update()
+
+            provider = create_provider(canonical_name, **provider_kwargs)
+            if not provider.is_configured():
+                raise ValueError(f"Provider '{provider_label}' is not configured")
+            
+            translator = Translator(provider=provider)
+
+            # 2. Prepare output path
+            source = Path(self.selected_file)
+            output_dir_env = os.getenv("LEXORA_UI_OUTPUT_DIR")
+            output_dir = Path(output_dir_env) if output_dir_env else source.parent
+            output_dir.mkdir(parents=True, exist_ok=True)
+            ext = ".md" if source.suffix.lower() == ".md" else ".txt"
+            output_path = str(output_dir / f"{source.stem}_{target_lang}{ext}")
+
+            # 3. Translate
+            self.progress_panel.set_progress(0.4, "Translating... this may take a while")
+            self.page.update()
+
+            translator.translate_file(
+                input_file=self.selected_file,
+                output_file=output_path,
+                target_language=target_lang,
+            )
+
+            # 4. Success handling
+            if self.state == UIState.TRANSLATING:
+                self.progress_panel.set_progress(1.0, "Translation completed!")
+                self._update_ui_for_completed(output_path)
+            
+        except Exception as e:
+            if self.state == UIState.TRANSLATING:
+                self.state = UIState.ERROR
+                self.progress_panel.set_status(f"Error: {e}")
+                self.translate_btn.disabled = False
+                self.cancel_btn.visible = False
+                self.file_picker.set_enabled(True)
+                self.provider_selector.set_enabled(True)
+                self.page.update()
 
     def _on_cancel_click(self, e):
         """Handle cancel button click."""
@@ -221,25 +338,3 @@ class HomeView(ft.Container):
         self.output_panel.set_output_path(output_path)
         self.output_panel.visible = True
         self.page.update()
-
-    def _simulate_translation(self):
-        """Simulate translation progress (placeholder)."""
-        import threading
-        import time
-        
-        def run():
-            chapters = ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4", "Chapter 5"]
-            for i, chapter in enumerate(chapters):
-                if self.state != UIState.TRANSLATING:
-                    return
-                progress = (i + 1) / len(chapters)
-                self.progress_panel.set_progress(progress, f"Translating {chapter}...")
-                self.page.update()
-                time.sleep(1)
-            
-            # Completed
-            if self.state == UIState.TRANSLATING:
-                output_path = self.selected_file.replace(".epub", "_vi.epub")
-                self._update_ui_for_completed(output_path)
-        
-        threading.Thread(target=run, daemon=True).start()

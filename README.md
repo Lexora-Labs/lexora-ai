@@ -4,7 +4,7 @@ Lexora AI is an open-source, AI-powered eBook translation tool. It enables devel
 
 ## Features
 
-- **Multiple AI Service Support**: Connect to OpenAI, Azure OpenAI, or Azure AI Foundry
+- **Provider-Based AI Support**: Plug in OpenAI, Azure OpenAI, Azure AI Foundry, Gemini, Anthropic, or Qwen
 - **Multiple File Format Support**: Read and translate EPUB, MOBI, Word (.docx), and Markdown (.md) files
 - **Preserve Formatting**: Maintains document structure during translation
 - **Easy CLI Interface**: Simple command-line tool for quick translations
@@ -12,6 +12,18 @@ Lexora AI is an open-source, AI-powered eBook translation tool. It enables devel
 
 ## Installation
 
+1. Create and activate a virtual environment (recommended):
+```bash
+python -m venv .venv
+
+# On Windows:
+.\.venv\Scripts\activate
+
+# On Mac/Linux:
+source .venv/bin/activate
+```
+
+2. Install the package in editable mode:
 ```bash
 pip install -e .
 ```
@@ -24,24 +36,34 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Create a `.env` file in your project directory with your API credentials:
+Lexora AI supports `.env` files for securely managing your configuration and API keys. The CLI automatically loads credentials from a `.env` file in your working directory.
+
+1. Copy `.env.example` to `.env`:
 
 ```bash
-# OpenAI
+cp .env.example .env
+```
+
+2. Uncomment and populate the variables for the service(s) you wish to use:
+
+```env
+# OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Or Azure OpenAI
-AZURE_OPENAI_API_KEY=your_azure_openai_key_here
+# Azure OpenAI Configuration
+AZURE_OPENAI_KEY=your_azure_openai_key_here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_DEPLOYMENT=your_deployment_name
 
-# Or Azure AI Foundry
+# Azure AI Foundry Configuration
 AZURE_AI_FOUNDRY_API_KEY=your_azure_ai_foundry_key_here
 AZURE_AI_FOUNDRY_ENDPOINT=https://your-endpoint.inference.ai.azure.com
 AZURE_AI_FOUNDRY_MODEL=your_model_name
+
+# Refer to .env.example for Google Gemini, Anthropic Claude, and Alibaba Qwen settings.
 ```
 
-See `.env.example` for a template.
+See `.env.example` for the complete list of supported providers and optional UI configurations.
 
 ## Usage
 
@@ -62,20 +84,48 @@ Specify source and target languages:
 lexora translate book.epub spanish_book.txt --source en --target es
 ```
 
-Use a specific AI service:
+Use a specific AI provider:
 ```bash
 lexora translate input.md output.txt --target de --service azure-openai
 ```
+
+Translate using global cache (default) with explicit path:
+```bash
+lexora translate input.epub output.epub --target vi --cache-path .lexora/cache/global_translation_cache.jsonl
+```
+
+Disable cache for a single run:
+```bash
+lexora translate input.epub output.epub --target vi --no-cache
+```
+
+Fast test run on first 3 EPUB documents:
+```bash
+lexora translate input.epub output.epub --target vi --limit-docs 3
+```
+
+Run a specific EPUB document range (1-based inclusive):
+```bash
+lexora translate input.epub output.epub --target vi --start-doc 5 --end-doc 8
+```
+
+Valid options for the `--service` parameter:
+- `openai`
+- `azure-openai`
+- `azure-foundry`
+- `gemini`
+- `anthropic`
+- `qwen`
 
 ### Python API
 
 ```python
 from lexora import Translator
-from lexora.services import OpenAIService
+from lexora.providers import OpenAIProvider
 
 # Create a translator with OpenAI
-service = OpenAIService(api_key="your-key")
-translator = Translator(service=service)
+provider = OpenAIProvider(api_key="your-key")
+translator = Translator(provider=provider)
 
 # Translate a file
 translator.translate_file(
@@ -100,16 +150,32 @@ print(translated)
 - **Word** (`.docx`, `.doc`): Microsoft Word documents
 - **Markdown** (`.md`): Markdown text files
 
-## Supported AI Services
+## Supported AI Providers
 
 1. **OpenAI**: Uses GPT models for translation
    - Requires: `OPENAI_API_KEY`
 
 2. **Azure OpenAI**: Azure-hosted OpenAI models
-   - Requires: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`
+   - Requires: `AZURE_OPENAI_KEY` or `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`
 
 3. **Azure AI Foundry**: Azure AI Foundry inference service
    - Requires: `AZURE_AI_FOUNDRY_API_KEY`, `AZURE_AI_FOUNDRY_ENDPOINT`, `AZURE_AI_FOUNDRY_MODEL`
+
+4. **Gemini**: Google Gemini models
+   - Requires: `GOOGLE_API_KEY`
+
+5. **Anthropic**: Claude models
+   - Requires: `ANTHROPIC_API_KEY`
+
+6. **Qwen**: Alibaba Qwen models
+   - Requires: `DASHSCOPE_API_KEY` or `QWEN_API_KEY`
+
+## Docs Index
+
+- [docs/vibe-context.md](docs/vibe-context.md): Core engineering context, guardrails, and architecture rules.
+- [docs/providers.md](docs/providers.md): Provider setup and configuration details.
+- [docs/translation-logic.md](docs/translation-logic.md): Canonical translation pipeline logic and EPUB flow.
+- [docs/todo-list.md](docs/todo-list.md): Planned translation pipeline improvements.
 
 ## Development
 

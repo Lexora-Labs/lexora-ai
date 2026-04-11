@@ -54,9 +54,9 @@ class AzureOpenAIProvider(BaseTranslator):
             debug: Enable debug logging
         """
         self._endpoint = endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
-        self._api_key = api_key or os.getenv("AZURE_OPENAI_KEY")
+        self._api_key = api_key or os.getenv("AZURE_OPENAI_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
         self._deployment = deployment or os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
-        self._api_version = api_version
+        self._api_version = os.getenv("AZURE_OPENAI_API_VERSION", api_version)
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[AzureOpenAI] = None
@@ -146,7 +146,7 @@ class AzureOpenAIProvider(BaseTranslator):
         
         # Prepare AST structure
         ast = BilingualAST(
-            source_language=config.source_language,
+            source_language=config.source_language or "",
             target_language=config.target_language,
             metadata={
                 "provider": self.provider_name,
@@ -188,7 +188,7 @@ class AzureOpenAIProvider(BaseTranslator):
             result = TranslationResult(
                 translated_content=translated,
                 bilingual_ast=BilingualAST(
-                    source_language=config.source_language,
+                    source_language=config.source_language or "",
                     target_language=config.target_language,
                     nodes=[node],
                 ),

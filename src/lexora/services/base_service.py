@@ -1,33 +1,32 @@
-"""Base AI service interface."""
+"""Compatibility shim for the legacy service API."""
 
 from abc import ABC, abstractmethod
 from typing import Optional
+from ..core import TranslationConfig, TranslationResult
 
 
 class AIService(ABC):
-    """Abstract base class for AI translation services."""
+    """Compatibility layer that forwards to the provider architecture."""
+
+    def translate(
+        self,
+        text: str,
+        target_language: str,
+        source_language: Optional[str] = None,
+    ) -> str:
+        """Translate text using the canonical provider contract."""
+        config = TranslationConfig(
+            source_language=source_language,
+            target_language=target_language,
+        )
+        return self.translate_text(text, config).translated_content
 
     @abstractmethod
-    def translate(self, text: str, target_language: str, source_language: Optional[str] = None) -> str:
-        """
-        Translate text to the target language.
-
-        Args:
-            text: Text to translate
-            target_language: Target language code (e.g., 'es', 'fr', 'de')
-            source_language: Source language code (optional, auto-detect if None)
-
-        Returns:
-            str: Translated text
-        """
-        pass
+    def translate_text(self, text: str, config: TranslationConfig) -> TranslationResult:
+        """Provider-style translation contract."""
+        raise NotImplementedError
 
     @abstractmethod
     def is_configured(self) -> bool:
-        """
-        Check if the service is properly configured.
-
-        Returns:
-            bool: True if the service has necessary credentials
-        """
-        pass
+        """Check if the service is properly configured."""
+        raise NotImplementedError

@@ -53,7 +53,7 @@ class DashboardScreen(ft.Container):
                 title="This Month",
                 value="5",
                 icon=ft.icons.CALENDAR_TODAY,
-                color="#8B5CF6",
+                color=Colors.INFO,
             ),
         ], spacing=16, wrap=True)
         
