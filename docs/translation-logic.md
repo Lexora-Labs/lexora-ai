@@ -36,15 +36,17 @@ This document describes the current canonical translation logic in `lexora-ai`.
 
 - Chunking improves reliability, but independent chunk calls can reduce cross-chunk context coherence.
 
-## Caching Flow (Planned)
+## Caching Flow (Current)
 
-To reduce repeated translation cost and speed up reruns, the pipeline will support a resumable cache.
+To reduce repeated translation cost and speed up reruns, the pipeline uses a resumable global cache.
 
 ### Cache model
 
 - Storage format: JSONL (append-only)
-- Key strategy: `sha256(target_language + "||" + content)`
-- Value: translated output for that exact content in that target language
+- Key strategy: deterministic hash of content + behavior fingerprint
+- Fingerprint fields: source language, target language, provider name, provider model, glossary hash, custom instruction hash, chunking version, pipeline version
+- Value: translated output for that exact content under that translation behavior
+- Schema fields: `schema_version`, `created_at`, `key`, `content_hash`, `translated_text`, `fingerprint`
 
 ### Read/write behavior
 
@@ -53,6 +55,7 @@ To reduce repeated translation cost and speed up reruns, the pipeline will suppo
 3. If cache hit, use cached translation directly.
 4. If cache miss, call provider and persist result (`put`).
 5. Reassemble translated chunks back to node order.
+6. Apply output rendering mode (`replace` or `bilingual`) after translation reuse.
 
 ### Design rules
 
@@ -69,4 +72,5 @@ To reduce repeated translation cost and speed up reruns, the pipeline will suppo
 
 - `mode=replace`: replace original node text.
 - `mode=bilingual`: keep original and translated text together.
+- `mode` is a rendering concern and does not change cache identity.
 - `glossary`: term mapping is passed in `TranslationConfig` to providers.

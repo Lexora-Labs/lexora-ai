@@ -1,6 +1,7 @@
 """Main translator module."""
 
 import hashlib
+import time
 from typing import Optional, List, Dict
 from pathlib import Path
 from ebooklib import epub
@@ -12,6 +13,9 @@ from .core import (
     BilingualAST,
     BilingualNode,
     TranslationMode,
+    CacheFingerprint,
+    TranslationCache,
+    hash_glossary,
 )
 from .providers import get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
@@ -75,6 +79,10 @@ class Translator:
         source_language: Optional[str] = None,
         mode: str = "replace",
         glossary: Optional[Dict[str, str]] = None,
+        cache_path: Optional[str] = None,
+        limit_docs: Optional[int] = None,
+        start_doc: Optional[int] = None,
+        end_doc: Optional[int] = None,
     ) -> TranslationResult:
         """
         Translate a file to the target language.
@@ -86,6 +94,10 @@ class Translator:
             source_language: Source language code (optional)
             mode: Translation output mode: replace or bilingual
             glossary: Optional glossary dictionary {source_term: target_term}
+            cache_path: Optional global translation cache path (JSONL)
+            limit_docs: Optional number of EPUB documents to translate from selection start
+            start_doc: Optional 1-based start index of EPUB document selection
+            end_doc: Optional 1-based end index (inclusive) of EPUB document selection
         """
         # Check if input file exists
         input_path = Path(input_file)
@@ -102,6 +114,10 @@ class Translator:
                 source_language=source_language,
                 mode=mode,
                 glossary=glossary,
+                cache_path=cache_path,
+                limit_docs=limit_docs,
+                start_doc=start_doc,
+                end_doc=end_doc,
             )
 
         # Read the file
@@ -140,10 +156,21 @@ class Translator:
         source_language: Optional[str] = None,
         mode: str = "replace",
         glossary: Optional[Dict[str, str]] = None,
+        cache_path: Optional[str] = None,
+        limit_docs: Optional[int] = None,
+        start_doc: Optional[int] = None,
+        end_doc: Optional[int] = None,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
         print(f"Reading EPUB {input_file}...")
         book = reader.load_book(input_file)
+        docs = list(reader.iter_document_items(book))
+        docs = self._select_epub_docs(
+            docs=docs,
+            limit_docs=limit_docs,
+            start_doc=start_doc,
+            end_doc=end_doc,
+        )
         config = TranslationConfig(
             source_language=source_language,
             target_language=target_language,
@@ -158,11 +185,28 @@ class Translator:
             "total_tokens": 0,
         }
 
-        print(f"Translating EPUB to {target_language} with {self.provider.provider_name}...")
-        for item in reader.iter_document_items(book):
+        cache = TranslationCache(cache_path) if cache_path else None
+        cache_fingerprint = self._build_cache_fingerprint(config)
+        started_at = time.perf_counter()
+
+        total_nodes = 0
+        total_chunks = 0
+        total_cache_hits = 0
+        total_cache_misses = 0
+        translated_docs = 0
+
+        print(
+            f"[epub] Starting translation: docs={len(docs)} "
+            f"target={target_language} provider={self.provider.provider_name}"
+        )
+        for doc_index, item in enumerate(docs, start=1):
+            doc_started_at = time.perf_counter()
+            print(f"[epub] [{doc_index}/{len(docs)}] Translating {item.get_name()}...")
+
             html = item.get_content().decode("utf-8", errors="ignore")
             soup, text_nodes = reader.extract_translatable_nodes(html)
             if not text_nodes:
+                print(f"[epub] [{doc_index}/{len(docs)}] No translatable nodes, skipped")
                 continue
 
             source_texts = [str(node) for node in text_nodes]
@@ -175,13 +219,44 @@ class Translator:
                 end = len(chunked_texts)
                 node_chunk_ranges.append((start, end))
 
-            batch_results = self.provider.translate_batch(chunked_texts, config)
-            translated_chunks: List[str] = []
+            doc_cache_hits = 0
+            doc_cache_misses = 0
+
+            translated_chunks: List[str] = [""] * len(chunked_texts)
+            uncached_indices: List[int] = []
+            uncached_texts: List[str] = []
             for index, chunk_text in enumerate(chunked_texts):
-                result = batch_results[index] if index < len(batch_results) else None
-                translated_chunk = result.translated_content if result else chunk_text
-                translated_chunks.append(translated_chunk)
+                if cache is None:
+                    uncached_indices.append(index)
+                    uncached_texts.append(chunk_text)
+                    doc_cache_misses += 1
+                    continue
+
+                cached_text = cache.get(chunk_text, cache_fingerprint)
+                if cached_text is None:
+                    uncached_indices.append(index)
+                    uncached_texts.append(chunk_text)
+                    doc_cache_misses += 1
+                else:
+                    translated_chunks[index] = cached_text
+                    doc_cache_hits += 1
+
+            batch_results: List[TranslationResult] = []
+            if uncached_texts:
+                print(
+                    f"[epub] [{doc_index}/{len(docs)}] Provider translating "
+                    f"{len(uncached_texts)} chunk(s)..."
+                )
+                batch_results = self.provider.translate_batch(uncached_texts, config)
+
+            for result_index, chunk_index in enumerate(uncached_indices):
+                source_chunk = chunked_texts[chunk_index]
+                result = batch_results[result_index] if result_index < len(batch_results) else None
+                translated_chunk = result.translated_content if result else source_chunk
+                translated_chunks[chunk_index] = translated_chunk
                 self._accumulate_token_usage(token_usage, result)
+                if cache is not None:
+                    cache.put(source_chunk, cache_fingerprint, translated_chunk)
 
             translated_texts: List[str] = []
             for index, source_text in enumerate(source_texts):
@@ -206,6 +281,19 @@ class Translator:
             updated_html = reader.replace_translatable_nodes(soup, text_nodes, translated_texts)
             item.set_content(updated_html.encode("utf-8"))
 
+            translated_docs += 1
+            total_nodes += len(text_nodes)
+            total_chunks += len(chunked_texts)
+            total_cache_hits += doc_cache_hits
+            total_cache_misses += doc_cache_misses
+
+            doc_elapsed = time.perf_counter() - doc_started_at
+            print(
+                f"[epub] [{doc_index}/{len(docs)}] Done nodes={len(text_nodes)} "
+                f"chunks={len(chunked_texts)} cache_hit={doc_cache_hits} "
+                f"cache_miss={doc_cache_misses} time={doc_elapsed:.1f}s"
+            )
+
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         epub.write_epub(output_file, book)
@@ -224,11 +312,74 @@ class Translator:
         translated_message = (
             f"EPUB translated with {self.provider.provider_name} and saved to {output_file}"
         )
+        total_elapsed = time.perf_counter() - started_at
+        cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
+        print(
+            f"[epub] Summary docs={translated_docs}/{len(docs)} nodes={total_nodes} "
+            f"chunks={total_chunks} cache_hit={total_cache_hits} "
+            f"cache_miss={total_cache_misses} cache_hit_rate={cache_rate:.1f}% "
+            f"tokens={token_usage.get('total_tokens', 0)} time={total_elapsed:.1f}s"
+        )
         print(f"Translation saved to {output_file}")
         return TranslationResult(
             translated_content=translated_message,
             bilingual_ast=ast,
             token_usage=token_usage,
+        )
+
+    def _select_epub_docs(
+        self,
+        docs: List,
+        limit_docs: Optional[int],
+        start_doc: Optional[int],
+        end_doc: Optional[int],
+    ) -> List:
+        """Select EPUB docs for scoped test runs using 1-based inclusive range."""
+        selected_docs = docs
+
+        if start_doc is not None or end_doc is not None:
+            start_index = max(1, start_doc or 1)
+            end_index = end_doc if end_doc is not None else len(selected_docs)
+            end_index = max(start_index, end_index)
+
+            zero_based_start = start_index - 1
+            zero_based_end_exclusive = min(len(selected_docs), end_index)
+            selected_docs = selected_docs[zero_based_start:zero_based_end_exclusive]
+
+            print(
+                f"[epub] Doc range selection start={start_index} end={end_index} "
+                f"selected={len(selected_docs)}"
+            )
+
+        if limit_docs is not None:
+            selected_docs = selected_docs[: max(0, limit_docs)]
+            print(
+                f"[epub] Limit selection limit_docs={limit_docs} "
+                f"selected={len(selected_docs)}"
+            )
+
+        return selected_docs
+
+    def _build_cache_fingerprint(self, config: TranslationConfig) -> CacheFingerprint:
+        """Build a robust cache fingerprint for translation behavior."""
+        model = (
+            getattr(self.provider, "_model", None)
+            or getattr(self.provider, "_deployment", None)
+            or getattr(self.provider, "model", None)
+            or getattr(self.provider, "deployment", None)
+            or "unknown"
+        )
+        custom_instruction = config.custom_instruction or ""
+        instruction_hash = hashlib.sha256(custom_instruction.encode("utf-8")).hexdigest()
+        return CacheFingerprint(
+            source_language=config.source_language or "auto",
+            target_language=config.target_language,
+            provider_name=self.provider.provider_name,
+            provider_model=str(model),
+            glossary_hash=hash_glossary(config.glossary),
+            instruction_hash=instruction_hash,
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
         )
 
     def _make_epub_node_id(self, item_name: str, index: int, text: str) -> str:
