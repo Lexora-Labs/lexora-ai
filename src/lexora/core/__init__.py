@@ -8,6 +8,13 @@ from .base_translator import (
     BilingualAST,
     BilingualNode,
 )
+from .translation_cache import (
+    CACHE_SCHEMA_VERSION,
+    CacheFingerprint,
+    TranslationCache,
+    build_cache_key,
+    hash_glossary,
+)
 
 __all__ = [
     "BaseTranslator",
@@ -16,4 +23,9 @@ __all__ = [
     "TranslationMode",
     "BilingualAST",
     "BilingualNode",
+    "CACHE_SCHEMA_VERSION",
+    "CacheFingerprint",
+    "TranslationCache",
+    "build_cache_key",
+    "hash_glossary",
 ]

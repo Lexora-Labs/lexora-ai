@@ -10,6 +10,9 @@ from .translator import Translator
 from .providers import create_provider, iter_available_provider_names
 
 
+DEFAULT_GLOBAL_CACHE_PATH = ".lexora/cache/global_translation_cache.jsonl"
+
+
 def _load_glossary(glossary_path: str):
     """Load glossary JSON from file if provided."""
     if not glossary_path:
@@ -99,6 +102,34 @@ Supported AI providers:
         '--glossary',
         help='Path to glossary JSON object {"source_term": "target_term"}'
     )
+    translate_parser.add_argument(
+        '--cache-path',
+        default=DEFAULT_GLOBAL_CACHE_PATH,
+        help=(
+            'Global translation cache JSONL path '
+            f'(default: {DEFAULT_GLOBAL_CACHE_PATH})'
+        ),
+    )
+    translate_parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='Disable translation cache for this run',
+    )
+    translate_parser.add_argument(
+        '--limit-docs',
+        type=int,
+        help='Translate only the first N EPUB document items after range filtering (debug)',
+    )
+    translate_parser.add_argument(
+        '--start-doc',
+        type=int,
+        help='1-based start index of EPUB document range to translate',
+    )
+    translate_parser.add_argument(
+        '--end-doc',
+        type=int,
+        help='1-based end index (inclusive) of EPUB document range to translate',
+    )
 
     args = parser.parse_args()
 
@@ -116,6 +147,16 @@ Supported AI providers:
             # Create translator
             translator = Translator(provider=provider)
             glossary = _load_glossary(args.glossary)
+            cache_path = None if args.no_cache else args.cache_path
+
+            if args.limit_docs is not None and args.limit_docs < 0:
+                raise ValueError("--limit-docs must be >= 0")
+            if args.start_doc is not None and args.start_doc < 1:
+                raise ValueError("--start-doc must be >= 1")
+            if args.end_doc is not None and args.end_doc < 1:
+                raise ValueError("--end-doc must be >= 1")
+            if args.start_doc is not None and args.end_doc is not None and args.start_doc > args.end_doc:
+                raise ValueError("--start-doc cannot be greater than --end-doc")
 
             # Translate the file
             translator.translate_file(
@@ -125,6 +166,10 @@ Supported AI providers:
                 source_language=args.source,
                 mode=args.mode,
                 glossary=glossary,
+                cache_path=cache_path,
+                limit_docs=args.limit_docs,
+                start_doc=args.start_doc,
+                end_doc=args.end_doc,
             )
 
             print("Translation completed successfully!")

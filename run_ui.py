@@ -15,11 +15,12 @@ import base64
 import asyncio
 from pathlib import Path
 import threading
-import time
 from typing import Optional
 import argparse
+from typing import Any, cast
 
 import flet as ft
+from dotenv import load_dotenv
 
 # Allow importing the shared theme module from src/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -31,6 +32,8 @@ from lexora.ui.theme import (
     theme_mode_icon as _theme_icon,
 )
 from lexora.ui.layout.main_layout import MainLayout
+from lexora.translator import Translator
+from lexora.providers import create_provider
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -40,6 +43,8 @@ BRANDING_APP_ICON_ASSET_PATH = "branding/lexora-ai-icon.ico"
 BRANDING_LOGO_DARK_SVG = BRANDING_DIR / "lexora-ai-logo-dark-v2.2.svg"
 BRANDING_LOGO_LIGHT_SVG = BRANDING_DIR / "lexora-ai-logo-light-v2.2.svg"
 BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
+
+load_dotenv(REPO_ROOT / ".env")
 
 
 def _resolve_logo_path(theme_mode: ft.ThemeMode, page: ft.Page | None = None) -> Path:
@@ -68,6 +73,7 @@ def _load_logo_data_uri(theme_mode: ft.ThemeMode, page: ft.Page | None = None) -
 
 def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
     """Set app/window icon and favicon from the branding ICO when available."""
+    page_any = cast(Any, page)
     logo_path = _resolve_logo_path(theme_mode, page)
     logo_data_uri = _load_logo_data_uri(theme_mode, page)
     has_svg = bool(logo_data_uri) or logo_path.exists()
@@ -76,16 +82,17 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
         return
 
     icon_path = str((BRANDING_APP_ICON_ICO if has_ico else logo_path).resolve())
-    if hasattr(page, "window") and hasattr(page.window, "icon"):
-        page.window.icon = icon_path
-    elif hasattr(page, "window_icon"):
-        page.window_icon = icon_path
+    window_obj = getattr(page_any, "window", None)
+    if window_obj is not None and hasattr(window_obj, "icon"):
+        setattr(window_obj, "icon", icon_path)
+    elif hasattr(page_any, "window_icon"):
+        setattr(page_any, "window_icon", icon_path)
 
-    if hasattr(page, "favicon"):
+    if hasattr(page_any, "favicon"):
         if has_ico:
-            page.favicon = BRANDING_APP_ICON_ASSET_PATH
+            setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
         elif has_svg:
-            page.favicon = logo_data_uri or logo_path.as_posix()
+            setattr(page_any, "favicon", logo_data_uri or logo_path.as_posix())
 
 
 # ============ Provider Config ============
@@ -104,6 +111,14 @@ LANGUAGES = [
     ("zh", "Chinese"),
     ("ko", "Korean"),
 ]
+
+UI_PROVIDER_TO_CANONICAL = {
+    "OpenAI": "openai",
+    "Azure OpenAI": "azure-openai",
+    "Gemini": "gemini",
+    "Anthropic": "anthropic",
+    "Qwen": "qwen",
+}
 
 
 # ============ Screen Builders ============
@@ -194,8 +209,11 @@ def create_dashboard_view(page: ft.Page, navigate_to) -> ft.Control:
 def create_translate_view(page: ft.Page) -> ft.Control:
     """Translate screen with file picker and progress."""
     
-    selected_file = {"path": None, "name": None}
+    selected_file: dict[str, Optional[str]] = {"path": None, "name": None}
+    output_dir_state: dict[str, Optional[str]] = {"path": os.getenv("LEXORA_UI_OUTPUT_DIR")}
     is_translating = {"value": False}
+    active_job_id = {"value": 0}
+    cancel_requested = {"value": False}
     
     file_display = ft.Text("No file selected", size=14, color=Colors.TEXT_SECONDARY)
     
@@ -280,10 +298,58 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         border_radius=10,
     )
 
+    output_dir_text = ft.Text(
+        "Default: same folder as input file",
+        size=12,
+        color=Colors.TEXT_SECONDARY,
+    )
+
+    def on_output_dir_picked(e: ft.FilePickerResultEvent):
+        if e.path:
+            output_dir_state["path"] = e.path
+            output_dir_text.value = f"Output folder: {e.path}"
+            output_dir_text.color = Colors.TEXT_PRIMARY
+            page.update()
+
+    output_dir_picker = ft.FilePicker(on_result=on_output_dir_picked)
+    page.overlay.append(output_dir_picker)
+
+    if output_dir_state["path"]:
+        output_dir_text.value = f"Output folder: {output_dir_state['path']}"
+        output_dir_text.color = Colors.TEXT_PRIMARY
+
+    output_path_section = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.icons.FOLDER, color=Colors.TEXT_SECONDARY),
+                ft.Text("Output Location", size=16, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+            ], spacing=8),
+            ft.Container(height=16),
+            ft.Row([
+                ft.OutlinedButton(
+                    "Choose Output Folder",
+                    icon=ft.icons.CREATE_NEW_FOLDER,
+                    on_click=lambda _: output_dir_picker.get_directory_path(dialog_title="Select Output Folder"),
+                ),
+                ft.OutlinedButton(
+                    "Use Input Folder",
+                    icon=ft.icons.RESTORE,
+                    on_click=lambda _: _clear_output_dir(),
+                ),
+            ], spacing=12, wrap=True),
+            ft.Container(height=8),
+            output_dir_text,
+        ]),
+        padding=24,
+        bgcolor=Colors.SURFACE,
+        border_radius=10,
+    )
+
     progress_bar = ft.ProgressBar(value=0, bgcolor=Colors.BACKGROUND, color=Colors.PRIMARY, bar_height=8)
     progress_text = ft.Text("0%", size=16, weight=ft.FontWeight.BOLD, color=Colors.TEXT_PRIMARY)
     status_text = ft.Text("Ready to translate", size=14, color=Colors.TEXT_SECONDARY)
     chapter_text = ft.Text("", size=12, color=Colors.TEXT_SECONDARY, italic=True)
+    output_text = ft.Text("", size=14, color=Colors.TEXT_PRIMARY)
     
     progress_section = ft.Container(
         content=ft.Column([
@@ -310,55 +376,145 @@ def create_translate_view(page: ft.Page) -> ft.Control:
                 ft.Text("Output", size=16, weight=ft.FontWeight.W_600, color=Colors.SUCCESS),
             ], spacing=8),
             ft.Container(height=16),
-            ft.Text("", size=14, color=Colors.TEXT_PRIMARY),
+            output_text,
         ]),
         padding=24,
         bgcolor=Colors.SURFACE,
         border_radius=10,
         visible=False,
     )
+
+    def _clear_output_dir() -> None:
+        output_dir_state["path"] = None
+        output_dir_text.value = "Default: same folder as input file"
+        output_dir_text.color = Colors.TEXT_SECONDARY
+        page.update()
+
+    def _pick_output_extension(input_path: Path) -> str:
+        # Keep markdown output as markdown; other formats default to plain text output.
+        return ".md" if input_path.suffix.lower() == ".md" else ".txt"
+
+    def _build_output_path(input_path: str, target_lang: str) -> str:
+        source = Path(input_path)
+        output_dir = Path(output_dir_state["path"]) if output_dir_state["path"] else source.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+        ext = _pick_output_extension(source)
+        return str(output_dir / f"{source.stem}_{target_lang}{ext}")
+
+    def _build_provider(provider_label: str, model_name: str):
+        canonical_name = UI_PROVIDER_TO_CANONICAL.get(provider_label)
+        if not canonical_name:
+            raise ValueError(f"Unsupported provider: {provider_label}")
+
+        provider_kwargs: dict[str, object] = {"debug": False}
+        if canonical_name == "azure-openai":
+            provider_kwargs["deployment"] = model_name
+        else:
+            provider_kwargs["model"] = model_name
+
+        provider = create_provider(canonical_name, **provider_kwargs)
+        if not provider.is_configured():
+            raise ValueError(f"Provider '{provider_label}' is not configured. Update API keys in .env/settings.")
+        return provider
     
     def on_translate(e):
         if not selected_file["path"] or is_translating["value"]:
             return
+
+        input_path = selected_file["path"]
+        provider_label = provider_dropdown.value
+        model_name = model_dropdown.value
+        target_lang = language_dropdown.value
+
+        if not input_path:
+            status_text.value = "Please select an input file."
+            status_text.color = Colors.ERROR
+            page.update()
+            return
+
+        if not provider_label or not model_name or not target_lang:
+            status_text.value = "Please select provider, model, and target language."
+            status_text.color = Colors.ERROR
+            page.update()
+            return
+
+        output_path = _build_output_path(input_path, target_lang)
+
+        active_job_id["value"] += 1
+        current_job_id = active_job_id["value"]
         
         is_translating["value"] = True
+        cancel_requested["value"] = False
         translate_btn.disabled = True
         cancel_btn.visible = True
+        cancel_btn.disabled = False
         progress_section.visible = True
         output_section.visible = False
+        progress_bar.value = None
+        progress_text.value = "..."
+        status_text.value = "Starting translation..."
+        status_text.color = Colors.TEXT_SECONDARY
+        chapter_text.value = f"{provider_label} • {model_name} • {target_lang}"
         page.update()
-        
-        def run_mock():
-            chapters = ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4", "Chapter 5"]
-            for i, ch in enumerate(chapters):
-                if not is_translating["value"]:
+
+        def run_translation(job_id: int):
+            try:
+                if cancel_requested["value"]:
                     return
-                progress = (i + 1) / len(chapters)
-                progress_bar.value = progress
-                progress_text.value = f"{int(progress * 100)}%"
-                status_text.value = "Translating..."
-                chapter_text.value = ch
+
+                provider = _build_provider(provider_label, model_name)
+                translator = Translator(provider=provider)
+
+                status_text.value = "Translating file..."
                 page.update()
-                time.sleep(1.0)
-            
-            if is_translating["value"]:
-                is_translating["value"] = False
-                status_text.value = "✅ Completed!"
+
+                translator.translate_file(
+                    input_file=input_path,
+                    output_file=output_path,
+                    target_language=target_lang,
+                )
+
+                if active_job_id["value"] != job_id:
+                    return
+
+                if cancel_requested["value"]:
+                    status_text.value = "Cancelled"
+                    status_text.color = Colors.WARNING
+                    chapter_text.value = "Current provider request may still complete in background."
+                    return
+
+                progress_bar.value = 1.0
+                progress_text.value = "100%"
+                status_text.value = "Completed"
                 status_text.color = Colors.SUCCESS
-                translate_btn.disabled = False
-                cancel_btn.visible = False
+                chapter_text.value = ""
+                output_text.value = f"Saved translated output: {output_path}"
                 output_section.visible = True
-                page.update()
-        
-        threading.Thread(target=run_mock, daemon=True).start()
+            except Exception as exc:
+                progress_bar.value = 0
+                progress_text.value = "0%"
+                status_text.value = f"Failed: {exc}"
+                status_text.color = Colors.ERROR
+                chapter_text.value = "Check provider credentials and selected model/deployment."
+            finally:
+                if active_job_id["value"] == job_id:
+                    is_translating["value"] = False
+                    translate_btn.disabled = False
+                    cancel_btn.visible = False
+                    cancel_btn.disabled = False
+                    page.update()
+
+        threading.Thread(target=run_translation, args=(current_job_id,), daemon=True).start()
     
     def on_cancel(e):
-        is_translating["value"] = False
-        translate_btn.disabled = False
-        cancel_btn.visible = False
-        status_text.value = "❌ Cancelled"
-        status_text.color = Colors.ERROR
+        if not is_translating["value"]:
+            return
+
+        cancel_requested["value"] = True
+        cancel_btn.disabled = True
+        status_text.value = "Cancel requested..."
+        status_text.color = Colors.WARNING
+        chapter_text.value = "Waiting for current provider request to return."
         page.update()
     
     translate_btn = ft.ElevatedButton("🚀 Start Translation", bgcolor=Colors.PRIMARY, color=Colors.TEXT_PRIMARY, height=50, width=220, disabled=True, on_click=on_translate)
@@ -368,6 +524,8 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         file_section,
         ft.Container(height=16),
         settings_section,
+        ft.Container(height=16),
+        output_path_section,
         ft.Container(height=24),
         ft.Row([translate_btn, cancel_btn], alignment=ft.MainAxisAlignment.CENTER, spacing=16),
         ft.Container(height=16),
@@ -570,21 +728,23 @@ def create_settings_view(page: ft.Page) -> ft.Control:
 # ============ Main Layout ============
 def main(page: ft.Page):
     """Main UI entry point using shared MainLayout + Sidebar components."""
+    page_any = cast(Any, page)
 
     current_theme = {"mode": ft.ThemeMode.SYSTEM}
 
     page.title = "Lexora AI"
     _set_app_icon(page, current_theme["mode"])
-    if hasattr(page, "window"):
-        page.window.width = 1100
-        page.window.height = 750
-        page.window.min_width = 800
-        page.window.min_height = 600
+    window_obj = getattr(page_any, "window", None)
+    if window_obj is not None:
+        setattr(window_obj, "width", 1100)
+        setattr(window_obj, "height", 750)
+        setattr(window_obj, "min_width", 800)
+        setattr(window_obj, "min_height", 600)
     else:
-        page.window_width = 1100
-        page.window_height = 750
-        page.window_min_width = 800
-        page.window_min_height = 600
+        setattr(page_any, "window_width", 1100)
+        setattr(page_any, "window_height", 750)
+        setattr(page_any, "window_min_width", 800)
+        setattr(page_any, "window_min_height", 600)
     page.padding = 0
 
     _apply_theme(page, current_theme["mode"])

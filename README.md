@@ -89,6 +89,26 @@ Use a specific AI provider:
 lexora translate input.md output.txt --target de --service azure-openai
 ```
 
+Translate using global cache (default) with explicit path:
+```bash
+lexora translate input.epub output.epub --target vi --cache-path .lexora/cache/global_translation_cache.jsonl
+```
+
+Disable cache for a single run:
+```bash
+lexora translate input.epub output.epub --target vi --no-cache
+```
+
+Fast test run on first 3 EPUB documents:
+```bash
+lexora translate input.epub output.epub --target vi --limit-docs 3
+```
+
+Run a specific EPUB document range (1-based inclusive):
+```bash
+lexora translate input.epub output.epub --target vi --start-doc 5 --end-doc 8
+```
+
 Valid options for the `--service` parameter:
 - `openai`
 - `azure-openai`

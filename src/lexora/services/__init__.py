@@ -1,4 +1,4 @@
-"""AI services for translation."""
+"""Legacy compatibility shims around the provider-based translation API."""
 
 from .base_service import AIService
 from .openai_service import OpenAIService

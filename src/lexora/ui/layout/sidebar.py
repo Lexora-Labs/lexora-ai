@@ -15,7 +15,6 @@ class Sidebar(ft.Container):
     Collapsible sidebar with NavigationRail.
     
     Menu items:
-    - Dashboard
     - Translate
     - Library
     - Jobs
@@ -24,10 +23,12 @@ class Sidebar(ft.Container):
 
     def __init__(
         self,
+        page: ft.Page,
         on_navigate: Optional[Callable[[int], None]] = None,
         selected_index: int = 0,
     ):
         super().__init__()
+        self._page = page
         self.on_navigate = on_navigate
         self._selected_index = selected_index
         self._expanded = True
@@ -48,11 +49,6 @@ class Sidebar(ft.Container):
             indicator_color=Colors.PRIMARY,
             on_change=self._on_nav_change,
             destinations=[
-                ft.NavigationRailDestination(
-                    icon=ft.icons.DASHBOARD_OUTLINED,
-                    selected_icon=ft.icons.DASHBOARD,
-                    label="Dashboard",
-                ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.TRANSLATE_OUTLINED,
                     selected_icon=ft.icons.TRANSLATE,
@@ -83,36 +79,49 @@ class Sidebar(ft.Container):
             tooltip="Toggle sidebar",
             on_click=self._toggle_sidebar,
         )
-        
+
+        # Logo mark - simple book icon
+        self.logo_mark = ft.Icon(
+            ft.icons.MENU_BOOK,
+            color=Colors.PRIMARY,
+            size=32,
+        )
+
+        self.logo_text = ft.Text(
+            "Lexora",
+            size=20,
+            weight=ft.FontWeight.BOLD,
+            color=Colors.TEXT_PRIMARY,
+            visible=self._expanded,
+        )
+
         # Logo/Brand
         self.logo = ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Icon(ft.icons.AUTO_STORIES, color=Colors.PRIMARY, size=28),
-                    ft.Text(
-                        "Lexora",
-                        size=20,
-                        weight=ft.FontWeight.BOLD,
-                        color=Colors.TEXT_PRIMARY,
-                        visible=self._expanded,
-                    ),
+                    self.logo_mark,
+                    self.logo_text,
                 ],
                 spacing=8,
                 alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             padding=ft.padding.symmetric(vertical=16),
         )
-        
+
+        self.top_divider = ft.Divider(height=1, color=Colors.DIVIDER)
+        self.bottom_divider = ft.Divider(height=1, color=Colors.DIVIDER)
+
         # Layout
         self.content = ft.Column(
             controls=[
                 self.logo,
-                ft.Divider(height=1, color=Colors.BACKGROUND),
+                self.top_divider,
                 ft.Container(
                     content=self.nav_rail,
                     expand=True,
                 ),
-                ft.Divider(height=1, color=Colors.BACKGROUND),
+                self.bottom_divider,
                 ft.Container(
                     content=self.toggle_btn,
                     alignment=ft.alignment.center,
@@ -125,6 +134,22 @@ class Sidebar(ft.Container):
         
         self.bgcolor = Colors.SURFACE
         self.border_radius = ft.border_radius.only(top_right=12, bottom_right=12)
+        self._apply_theme()
+
+    def _apply_theme(self):
+        """Refresh theme-sensitive sidebar colors."""
+        self.logo_mark.color = Colors.PRIMARY
+        self.logo_text.color = Colors.TEXT_PRIMARY
+        self.nav_rail.bgcolor = Colors.SURFACE
+        self.nav_rail.indicator_color = Colors.PRIMARY
+        self.toggle_btn.icon_color = Colors.TEXT_SECONDARY
+        self.top_divider.color = Colors.DIVIDER
+        self.bottom_divider.color = Colors.DIVIDER
+        self.bgcolor = Colors.SURFACE
+
+    def before_update(self):
+        """Keep sidebar visuals in sync with the active theme."""
+        self._apply_theme()
 
     def _on_nav_change(self, e):
         """Handle navigation change."""
@@ -139,9 +164,7 @@ class Sidebar(ft.Container):
         self.toggle_btn.icon = ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU
         
         # Toggle logo text visibility
-        logo_row = self.logo.content
-        if isinstance(logo_row, ft.Row) and len(logo_row.controls) > 1:
-            logo_row.controls[1].visible = self._expanded
+        self.logo_text.visible = self._expanded
         
         self.update()
 
