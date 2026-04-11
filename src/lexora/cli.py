@@ -1,11 +1,34 @@
 """Command-line interface for Lexora AI."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 from .translator import Translator
-from .services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
+from .providers import create_provider, iter_available_provider_names
+
+
+def _load_glossary(glossary_path: str):
+    """Load glossary JSON from file if provided."""
+    if not glossary_path:
+        return {}
+
+    path = Path(glossary_path)
+    if not path.exists():
+        raise ValueError(f"Glossary file not found: {glossary_path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        raise ValueError(f"Failed to load glossary JSON: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ValueError("Glossary JSON must be an object: {\"term\": \"translation\"}")
+
+    return {str(k): str(v) for k, v in data.items()}
 
 
 def main():
@@ -21,11 +44,14 @@ Examples:
   # Translate an EPUB file to Spanish
   lexora translate input.epub output.txt --target es
 
-  # Translate a Word document to French with specific service
+  # Translate a Word document to French with a specific provider
   lexora translate input.docx output.txt --target fr --service openai
 
   # Translate with source language specified
   lexora translate input.md output.txt --target de --source en
+
+    # Translate EPUB in bilingual mode with glossary
+    lexora translate input.epub output.epub --target vi --mode bilingual --glossary glossary.json
 
 Supported file formats:
   - EPUB (.epub)
@@ -33,10 +59,13 @@ Supported file formats:
   - Word (.docx, .doc)
   - Markdown (.md)
 
-Supported AI services:
+Supported AI providers:
   - openai: OpenAI (requires OPENAI_API_KEY)
-  - azure-openai: Azure OpenAI (requires AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT)
+  - azure-openai: Azure OpenAI (requires AZURE_OPENAI_KEY or AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT)
   - azure-foundry: Azure AI Foundry (requires AZURE_AI_FOUNDRY_API_KEY, AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AI_FOUNDRY_MODEL)
+  - gemini: Google Gemini (requires GOOGLE_API_KEY)
+  - anthropic: Anthropic Claude (requires ANTHROPIC_API_KEY)
+  - qwen: Alibaba Qwen (requires DASHSCOPE_API_KEY or QWEN_API_KEY)
         """
     )
 
@@ -57,37 +86,45 @@ Supported AI services:
     )
     translate_parser.add_argument(
         '--service',
-        choices=['openai', 'azure-openai', 'azure-foundry'],
-        help='AI service to use (auto-detect if not specified)'
+        choices=list(iter_available_provider_names()),
+        help='Translation provider to use (auto-detect if not specified)'
+    )
+    translate_parser.add_argument(
+        '--mode',
+        choices=['replace', 'bilingual'],
+        default='replace',
+        help='Output mode: replace text or keep original + translated text (default: replace)'
+    )
+    translate_parser.add_argument(
+        '--glossary',
+        help='Path to glossary JSON object {"source_term": "target_term"}'
     )
 
     args = parser.parse_args()
 
     if args.command == 'translate':
         try:
-            # Get the AI service
-            service = None
+            # Get the translation provider
+            provider = None
             if args.service:
-                if args.service == 'openai':
-                    service = OpenAIService()
-                elif args.service == 'azure-openai':
-                    service = AzureOpenAIService()
-                elif args.service == 'azure-foundry':
-                    service = AzureAIFoundryService()
-                
-                if not service.is_configured():
+                provider = create_provider(args.service)
+
+                if not provider.is_configured():
                     print(f"Error: {args.service} is not properly configured", file=sys.stderr)
                     sys.exit(1)
 
             # Create translator
-            translator = Translator(service=service)
+            translator = Translator(provider=provider)
+            glossary = _load_glossary(args.glossary)
 
             # Translate the file
             translator.translate_file(
                 input_file=args.input,
                 output_file=args.output,
                 target_language=args.target,
-                source_language=args.source
+                source_language=args.source,
+                mode=args.mode,
+                glossary=glossary,
             )
 
             print("Translation completed successfully!")
