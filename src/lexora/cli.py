@@ -1,6 +1,7 @@
 """Command-line interface for Lexora AI."""
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ from .providers import create_provider, iter_available_provider_names
 
 
 DEFAULT_GLOBAL_CACHE_PATH = ".lexora/cache/global_translation_cache.jsonl"
+DEFAULT_PER_EBOOK_CACHE_DIR = ".lexora/cache/per-ebook"
 
 
 def _load_glossary(glossary_path: str):
@@ -32,6 +34,41 @@ def _load_glossary(glossary_path: str):
         raise ValueError("Glossary JSON must be an object: {\"term\": \"translation\"}")
 
     return {str(k): str(v) for k, v in data.items()}
+
+
+def _build_per_ebook_cache_path(input_file: str) -> str:
+    """Build deterministic per-ebook cache path from input file identity."""
+    source = Path(input_file)
+    name = source.stem or "ebook"
+    path_hash = hashlib.sha256(str(source.resolve()).encode("utf-8")).hexdigest()[:12]
+    return str(Path(DEFAULT_PER_EBOOK_CACHE_DIR) / f"{name}-{path_hash}.jsonl")
+
+
+def _resolve_cache_path(
+    input_file: str,
+    cache_scope: str,
+    cache_path: str,
+    no_cache: bool,
+) -> str | None:
+    """Resolve effective cache path from CLI flags."""
+    if no_cache or cache_scope == "disabled":
+        return None
+    if cache_scope == "per-ebook":
+        return _build_per_ebook_cache_path(input_file)
+    return cache_path
+
+
+def _clear_cache_file(path: str | None) -> str:
+    """Clear cache file if present, otherwise return a safe no-op message."""
+    if not path:
+        return "Cache is disabled, nothing to clear"
+
+    cache_path = Path(path)
+    if not cache_path.exists():
+        return f"Cache file not found, nothing to clear: {path}"
+
+    cache_path.unlink()
+    return f"Cleared cache file: {path}"
 
 
 def main():
@@ -111,9 +148,20 @@ Supported AI providers:
         ),
     )
     translate_parser.add_argument(
+        '--cache-scope',
+        choices=['global', 'per-ebook', 'disabled'],
+        default='global',
+        help='Cache scope strategy (default: global)',
+    )
+    translate_parser.add_argument(
         '--no-cache',
         action='store_true',
         help='Disable translation cache for this run',
+    )
+    translate_parser.add_argument(
+        '--clear-cache',
+        action='store_true',
+        help='Clear the effective cache file before translation starts',
     )
     translate_parser.add_argument(
         '--limit-docs',
@@ -147,7 +195,15 @@ Supported AI providers:
             # Create translator
             translator = Translator(provider=provider)
             glossary = _load_glossary(args.glossary)
-            cache_path = None if args.no_cache else args.cache_path
+            cache_path = _resolve_cache_path(
+                input_file=args.input,
+                cache_scope=args.cache_scope,
+                cache_path=args.cache_path,
+                no_cache=args.no_cache,
+            )
+
+            if args.clear_cache:
+                print(_clear_cache_file(cache_path))
 
             if args.limit_docs is not None and args.limit_docs < 0:
                 raise ValueError("--limit-docs must be >= 0")

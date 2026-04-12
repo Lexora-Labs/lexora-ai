@@ -2,6 +2,7 @@
 
 import sys
 import os
+import json
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -301,6 +302,120 @@ def test_translation_cache_key_stability():
         return False
 
 
+def test_cli_cache_scope_and_clear_cache():
+    """Test CLI cache scope resolution and clear-cache helper behavior."""
+    print("\nTesting CLI cache scope and clear-cache helper...")
+
+    try:
+        import tempfile
+        from lexora.cli import _resolve_cache_path, _clear_cache_file
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = os.path.join(temp_dir, "book.epub")
+            with open(input_file, "w", encoding="utf-8") as f:
+                f.write("stub")
+
+            global_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="global",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+            per_ebook_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="per-ebook",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+            disabled_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="disabled",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+
+            assert global_path.endswith("global_translation_cache.jsonl")
+            assert per_ebook_path is not None and "/per-ebook/" in per_ebook_path.replace("\\", "/")
+            assert disabled_path is None
+
+            cache_file = os.path.join(temp_dir, "cache.jsonl")
+            with open(cache_file, "w", encoding="utf-8") as cache_out:
+                cache_out.write('{"key":"k","translated_text":"v"}\n')
+
+            cleared = _clear_cache_file(cache_file)
+            assert "Cleared cache file" in cleared
+            assert not os.path.exists(cache_file)
+
+            missing = _clear_cache_file(cache_file)
+            assert "not found" in missing
+
+            disabled = _clear_cache_file(None)
+            assert "disabled" in disabled
+
+        print("✓ CLI cache scope and clear-cache helper work")
+        return True
+    except Exception as e:
+        print(f"\n✗ CLI cache scope/clear-cache test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_cache_record_compatibility_filtering():
+    """Test cache loader skips incompatible schema/pipeline records."""
+    print("\nTesting cache record compatibility filtering...")
+
+    try:
+        import tempfile
+        from lexora.core import CacheFingerprint, TranslationCache, build_cache_key, hash_glossary
+
+        fp = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"book": "sach"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+        content = "Hello, world!"
+        compatible_key = build_cache_key(content, fp)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_path = os.path.join(temp_dir, "compat-cache.jsonl")
+            with open(cache_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "schema_version": "0.9",
+                    "key": compatible_key,
+                    "translated_text": "OLD",
+                    "fingerprint": {"pipeline_version": "epub-node-v1"},
+                }) + "\n")
+                f.write(json.dumps({
+                    "schema_version": "1.0",
+                    "key": compatible_key,
+                    "translated_text": "OLD_PIPELINE",
+                    "fingerprint": {"pipeline_version": "epub-node-v0"},
+                }) + "\n")
+                f.write(json.dumps({
+                    "schema_version": "1.0",
+                    "key": compatible_key,
+                    "translated_text": "NEW",
+                    "fingerprint": {"pipeline_version": "epub-node-v1"},
+                }) + "\n")
+
+            cache = TranslationCache(cache_path)
+            assert cache.get(content, fp) == "NEW", "Compatible cache record should be loaded"
+
+        print("✓ Cache compatibility filtering works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Cache compatibility filtering test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -315,6 +430,8 @@ def main():
     results.append(("Markdown Reader", test_markdown_reader()))
     results.append(("Theme System", test_theme_system()))
     results.append(("Translation Cache Key", test_translation_cache_key_stability()))
+    results.append(("CLI Cache Scope/Clear", test_cli_cache_scope_and_clear_cache()))
+    results.append(("Cache Compatibility", test_cache_record_compatibility_filtering()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")

@@ -11,6 +11,8 @@ from typing import Dict, Optional
 
 
 CACHE_SCHEMA_VERSION = "1.0"
+SUPPORTED_CACHE_SCHEMA_VERSIONS = {"1.0"}
+SUPPORTED_PIPELINE_VERSIONS = {"epub-node-v1"}
 
 
 def _sha256(text: str) -> str:
@@ -67,6 +69,8 @@ class TranslationCache:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._map: Dict[str, str] = {}
+        self._supported_schema_versions = SUPPORTED_CACHE_SCHEMA_VERSIONS
+        self._supported_pipeline_versions = SUPPORTED_PIPELINE_VERSIONS
         self._load_existing()
 
     def _load_existing(self) -> None:
@@ -81,6 +85,18 @@ class TranslationCache:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+
+                schema_version = str(record.get("schema_version", ""))
+                if schema_version not in self._supported_schema_versions:
+                    continue
+
+                fingerprint = record.get("fingerprint")
+                if not isinstance(fingerprint, dict):
+                    continue
+
+                pipeline_version = str(fingerprint.get("pipeline_version", ""))
+                if pipeline_version not in self._supported_pipeline_versions:
                     continue
 
                 key = record.get("key")
@@ -104,6 +120,7 @@ class TranslationCache:
             "content_hash": _sha256(content),
             "translated_text": translated_text,
             "fingerprint": fingerprint.to_dict(),
+            "pipeline_version": fingerprint.pipeline_version,
         }
 
         with open(self.path, "a", encoding="utf-8") as cache_file:

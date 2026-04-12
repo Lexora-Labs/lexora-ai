@@ -94,9 +94,19 @@ Translate using global cache (default) with explicit path:
 lexora translate input.epub output.epub --target vi --cache-path .lexora/cache/global_translation_cache.jsonl
 ```
 
+Translate using per-ebook cache isolation:
+```bash
+lexora translate input.epub output.epub --target vi --cache-scope per-ebook
+```
+
 Disable cache for a single run:
 ```bash
 lexora translate input.epub output.epub --target vi --no-cache
+```
+
+Clear effective cache file before translation starts:
+```bash
+lexora translate input.epub output.epub --target vi --clear-cache
 ```
 
 Fast test run on first 3 EPUB documents:
@@ -175,6 +185,7 @@ print(translated)
 - [docs/vibe-context.md](docs/vibe-context.md): Core engineering context, guardrails, and architecture rules.
 - [docs/providers.md](docs/providers.md): Provider setup and configuration details.
 - [docs/translation-logic.md](docs/translation-logic.md): Canonical translation pipeline logic and EPUB flow.
+- [docs/logging-framework.md](docs/logging-framework.md): Planned centralized logging architecture and sink model.
 - [docs/todo-list.md](docs/todo-list.md): Planned translation pipeline improvements.
 
 ## Development
