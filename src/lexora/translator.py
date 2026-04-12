@@ -1,6 +1,7 @@
 """Main translator module."""
 
 import hashlib
+import logging
 import time
 from typing import Optional, List, Dict
 from pathlib import Path
@@ -47,6 +48,7 @@ class Translator:
             )
 
         self.provider = selected_provider
+        self.logger = logging.getLogger("lexora.translator")
         # Backward-compatible alias for older integrations.
         self.service = self.provider
         self.readers: List[FileReader] = [
@@ -121,14 +123,18 @@ class Translator:
             )
 
         # Read the file
-        print(f"Reading {input_file}...")
+        self.logger.info("Reading %s...", input_file)
         text = reader.read(input_file)
 
         if not text.strip():
             raise ValueError("No text content found in the file")
 
         # Translate the text
-        print(f"Translating to {target_language} with {self.provider.provider_name}...")
+        self.logger.info(
+            "Translating to %s with %s...",
+            target_language,
+            self.provider.provider_name,
+        )
         result = self.translate_text_result(
             text=text,
             target_language=target_language,
@@ -144,7 +150,7 @@ class Translator:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(result.translated_content)
         
-        print(f"Translation saved to {output_file}")
+        self.logger.info("Translation saved to %s", output_file)
         return result
 
     def _translate_epub_file(
@@ -162,7 +168,7 @@ class Translator:
         end_doc: Optional[int] = None,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
-        print(f"Reading EPUB {input_file}...")
+        self.logger.info("Reading EPUB %s...", input_file)
         book = reader.load_book(input_file)
         docs = list(reader.iter_document_items(book))
         docs = self._select_epub_docs(
@@ -195,18 +201,29 @@ class Translator:
         total_cache_misses = 0
         translated_docs = 0
 
-        print(
-            f"[epub] Starting translation: docs={len(docs)} "
-            f"target={target_language} provider={self.provider.provider_name}"
+        self.logger.info(
+            "[epub] Starting translation: docs=%s target=%s provider=%s",
+            len(docs),
+            target_language,
+            self.provider.provider_name,
         )
         for doc_index, item in enumerate(docs, start=1):
             doc_started_at = time.perf_counter()
-            print(f"[epub] [{doc_index}/{len(docs)}] Translating {item.get_name()}...")
+            self.logger.info(
+                "[epub] [%s/%s] Translating %s...",
+                doc_index,
+                len(docs),
+                item.get_name(),
+            )
 
             html = item.get_content().decode("utf-8", errors="ignore")
             soup, text_nodes = reader.extract_translatable_nodes(html)
             if not text_nodes:
-                print(f"[epub] [{doc_index}/{len(docs)}] No translatable nodes, skipped")
+                self.logger.info(
+                    "[epub] [%s/%s] No translatable nodes, skipped",
+                    doc_index,
+                    len(docs),
+                )
                 continue
 
             source_texts = [str(node) for node in text_nodes]
@@ -243,9 +260,11 @@ class Translator:
 
             batch_results: List[TranslationResult] = []
             if uncached_texts:
-                print(
-                    f"[epub] [{doc_index}/{len(docs)}] Provider translating "
-                    f"{len(uncached_texts)} chunk(s)..."
+                self.logger.info(
+                    "[epub] [%s/%s] Provider translating %s chunk(s)...",
+                    doc_index,
+                    len(docs),
+                    len(uncached_texts),
                 )
                 batch_results = self.provider.translate_batch(uncached_texts, config)
 
@@ -288,10 +307,15 @@ class Translator:
             total_cache_misses += doc_cache_misses
 
             doc_elapsed = time.perf_counter() - doc_started_at
-            print(
-                f"[epub] [{doc_index}/{len(docs)}] Done nodes={len(text_nodes)} "
-                f"chunks={len(chunked_texts)} cache_hit={doc_cache_hits} "
-                f"cache_miss={doc_cache_misses} time={doc_elapsed:.1f}s"
+            self.logger.info(
+                "[epub] [%s/%s] Done nodes=%s chunks=%s cache_hit=%s cache_miss=%s time=%.1fs",
+                doc_index,
+                len(docs),
+                len(text_nodes),
+                len(chunked_texts),
+                doc_cache_hits,
+                doc_cache_misses,
+                doc_elapsed,
             )
 
         output_path = Path(output_file)
@@ -314,13 +338,19 @@ class Translator:
         )
         total_elapsed = time.perf_counter() - started_at
         cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
-        print(
-            f"[epub] Summary docs={translated_docs}/{len(docs)} nodes={total_nodes} "
-            f"chunks={total_chunks} cache_hit={total_cache_hits} "
-            f"cache_miss={total_cache_misses} cache_hit_rate={cache_rate:.1f}% "
-            f"tokens={token_usage.get('total_tokens', 0)} time={total_elapsed:.1f}s"
+        self.logger.info(
+            "[epub] Summary docs=%s/%s nodes=%s chunks=%s cache_hit=%s cache_miss=%s cache_hit_rate=%.1f%% tokens=%s time=%.1fs",
+            translated_docs,
+            len(docs),
+            total_nodes,
+            total_chunks,
+            total_cache_hits,
+            total_cache_misses,
+            cache_rate,
+            token_usage.get("total_tokens", 0),
+            total_elapsed,
         )
-        print(f"Translation saved to {output_file}")
+        self.logger.info("Translation saved to %s", output_file)
         return TranslationResult(
             translated_content=translated_message,
             bilingual_ast=ast,
@@ -346,16 +376,19 @@ class Translator:
             zero_based_end_exclusive = min(len(selected_docs), end_index)
             selected_docs = selected_docs[zero_based_start:zero_based_end_exclusive]
 
-            print(
-                f"[epub] Doc range selection start={start_index} end={end_index} "
-                f"selected={len(selected_docs)}"
+            self.logger.info(
+                "[epub] Doc range selection start=%s end=%s selected=%s",
+                start_index,
+                end_index,
+                len(selected_docs),
             )
 
         if limit_docs is not None:
             selected_docs = selected_docs[: max(0, limit_docs)]
-            print(
-                f"[epub] Limit selection limit_docs={limit_docs} "
-                f"selected={len(selected_docs)}"
+            self.logger.info(
+                "[epub] Limit selection limit_docs=%s selected=%s",
+                limit_docs,
+                len(selected_docs),
             )
 
         return selected_docs
