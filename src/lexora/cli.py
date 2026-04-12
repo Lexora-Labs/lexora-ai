@@ -3,10 +3,12 @@
 import argparse
 import hashlib
 import json
+import logging
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+from .logging_framework import build_logging_config, configure_logging
 from .translator import Translator
 from .providers import create_provider, iter_available_provider_names
 
@@ -164,6 +166,28 @@ Supported AI providers:
         help='Clear the effective cache file before translation starts',
     )
     translate_parser.add_argument(
+        '--log-level',
+        help='Logging level override (DEBUG, INFO, WARNING, ERROR)',
+    )
+    translate_parser.add_argument(
+        '--log-targets',
+        help='Comma-separated log sinks (console,file,azure,aws,ui)',
+    )
+    translate_parser.add_argument(
+        '--log-file-path',
+        help='Log file path/pattern for file sink (supports %DATE%, %TIME%, %DATETIME%, %LEVEL%, %RUN_ID%, %PROVIDER%, %PID%)',
+    )
+    translate_parser.add_argument(
+        '--log-file-max-bytes',
+        type=int,
+        help='Max bytes before rotating file sink (default from env or 5242880)',
+    )
+    translate_parser.add_argument(
+        '--log-file-backup-count',
+        type=int,
+        help='Retained rotated file count (default from env or 3)',
+    )
+    translate_parser.add_argument(
         '--limit-docs',
         type=int,
         help='Translate only the first N EPUB document items after range filtering (debug)',
@@ -183,13 +207,23 @@ Supported AI providers:
 
     if args.command == 'translate':
         try:
+            logging_config = build_logging_config(
+                level=args.log_level,
+                targets=args.log_targets,
+                log_file_path=args.log_file_path,
+                file_max_bytes=args.log_file_max_bytes,
+                file_backup_count=args.log_file_backup_count,
+                provider=args.service or "auto",
+            )
+            logger = configure_logging(logging_config).getChild("cli")
+
             # Get the translation provider
             provider = None
             if args.service:
                 provider = create_provider(args.service)
 
                 if not provider.is_configured():
-                    print(f"Error: {args.service} is not properly configured", file=sys.stderr)
+                    logger.error("%s is not properly configured", args.service)
                     sys.exit(1)
 
             # Create translator
@@ -203,7 +237,7 @@ Supported AI providers:
             )
 
             if args.clear_cache:
-                print(_clear_cache_file(cache_path))
+                logger.info(_clear_cache_file(cache_path))
 
             if args.limit_docs is not None and args.limit_docs < 0:
                 raise ValueError("--limit-docs must be >= 0")
@@ -228,9 +262,10 @@ Supported AI providers:
                 end_doc=args.end_doc,
             )
 
-            print("Translation completed successfully!")
+            logger.info("Translation completed successfully")
 
         except Exception as e:
+            logging.getLogger("lexora.cli").exception("Translation failed")
             print(f"Error: {str(e)}", file=sys.stderr)
             sys.exit(1)
     else:

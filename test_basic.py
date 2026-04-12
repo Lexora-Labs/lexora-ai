@@ -416,6 +416,229 @@ def test_cache_record_compatibility_filtering():
         return False
 
 
+def test_logging_target_parsing_and_fallback():
+    """Test logging target parsing and fallback defaults."""
+    print("\nTesting logging target parsing...")
+
+    try:
+        from lexora.logging_framework import parse_log_targets
+
+        assert parse_log_targets(None) == ["console"]
+        assert parse_log_targets("") == ["console"]
+        assert parse_log_targets("console,file") == ["console", "file"]
+        assert parse_log_targets(" console , aws , ui ") == ["console", "aws", "ui"]
+
+        print("✓ Logging target parsing works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Logging target parsing test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_rotating_file_sink_utf8_output():
+    """Test file sink creates UTF-8 logs with date token filename pattern."""
+    print("\nTesting rotating file sink UTF-8 output...")
+
+    try:
+        import logging
+        import tempfile
+        from pathlib import Path
+        from lexora.logging_framework import build_logging_config, configure_logging
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pattern = str(Path(temp_dir) / "lexora-%DATE%.log")
+            config = build_logging_config(
+                level="INFO",
+                targets="file",
+                log_file_path=pattern,
+                file_max_bytes=1024,
+                file_backup_count=1,
+            )
+
+            logger = configure_logging(config).getChild("test")
+            logger.info("UTF-8 smoke: xin chao")
+
+            log_files = list(Path(temp_dir).glob("lexora-*.log"))
+            assert log_files, "Expected at least one log file"
+
+            content = log_files[0].read_text(encoding="utf-8")
+            assert "UTF-8 smoke: xin chao" in content
+
+            # Ensure file handlers are closed before temporary directory cleanup on Windows.
+            root_logger = logging.getLogger()
+            for handler in list(root_logger.handlers):
+                handler.close()
+                root_logger.removeHandler(handler)
+
+        print("✓ Rotating file sink UTF-8 output works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Rotating file sink test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_rotating_file_sink_datetime_token():
+    """Test file sink resolves %DATETIME% token in log filename."""
+    print("\nTesting rotating file sink DATETIME token...")
+
+    try:
+        import logging
+        import tempfile
+        from pathlib import Path
+        from lexora.logging_framework import build_logging_config, configure_logging
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pattern = str(Path(temp_dir) / "lexora-%DATETIME%.log")
+            config = build_logging_config(
+                level="INFO",
+                targets="file",
+                log_file_path=pattern,
+                file_max_bytes=1024,
+                file_backup_count=1,
+            )
+
+            logger = configure_logging(config).getChild("test")
+            logger.info("DATETIME token smoke")
+
+            log_files = list(Path(temp_dir).glob("lexora-*.log"))
+            assert log_files, "Expected at least one log file"
+            assert "%DATETIME%" not in log_files[0].name, "Token should be resolved in file name"
+
+            # Ensure file handlers are closed before temporary directory cleanup on Windows.
+            root_logger = logging.getLogger()
+            for handler in list(root_logger.handlers):
+                handler.close()
+                root_logger.removeHandler(handler)
+
+        print("✓ Rotating file sink DATETIME token works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Rotating file sink DATETIME token test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_logging_config_retention_overrides():
+    """Test CLI-style retention overrides are preserved in resolved config."""
+    print("\nTesting logging retention override config...")
+
+    try:
+        from lexora.logging_framework import build_logging_config
+
+        config = build_logging_config(
+            level="INFO",
+            targets="file",
+            log_file_path="logs/lexora-%DATE%.log",
+            file_max_bytes=2048,
+            file_backup_count=7,
+        )
+
+        assert config["file_max_bytes"] == 2048
+        assert config["file_backup_count"] == 7
+        print("✓ Logging retention overrides work")
+        return True
+    except Exception as e:
+        print(f"\n✗ Logging retention override test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_unknown_log_target_fallback_to_console():
+    """Test unknown sink target does not break logging initialization."""
+    print("\nTesting unknown log target fallback...")
+
+    try:
+        import logging
+        from lexora.logging_framework import configure_logging
+
+        logger = configure_logging(
+            {
+                "level": "INFO",
+                "targets": ["not-a-sink"],
+                "log_file_path": "logs/lexora-%DATE%.log",
+                "file_max_bytes": 1024,
+                "file_backup_count": 1,
+            }
+        ).getChild("test")
+        logger.info("fallback smoke")
+
+        root_logger = logging.getLogger()
+        assert root_logger.handlers, "Fallback console handler should be present"
+
+        # Ensure handlers are closed for clean test process state.
+        for handler in list(root_logger.handlers):
+            handler.close()
+            root_logger.removeHandler(handler)
+
+        print("✓ Unknown target fallback works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Unknown target fallback test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_rotating_file_sink_extended_tokens():
+    """Test file sink resolves LEVEL/RUN_ID/PROVIDER/PID tokens in filename."""
+    print("\nTesting rotating file sink extended tokens...")
+
+    try:
+        import logging
+        import os
+        import tempfile
+        from pathlib import Path
+        from lexora.logging_framework import build_logging_config, configure_logging
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_id = "runabc12"
+            pattern = str(Path(temp_dir) / "lexora-%PROVIDER%-%RUN_ID%-%LEVEL%-%PID%.log")
+            config = build_logging_config(
+                level="warning",
+                targets="file",
+                log_file_path=pattern,
+                file_max_bytes=1024,
+                file_backup_count=1,
+                provider="azure-foundry",
+                run_id=run_id,
+            )
+
+            logger = configure_logging(config).getChild("test")
+            logger.warning("extended token smoke")
+
+            log_files = list(Path(temp_dir).glob("lexora-*.log"))
+            assert log_files, "Expected at least one log file"
+            name = log_files[0].name
+            assert "%PROVIDER%" not in name
+            assert "%RUN_ID%" not in name
+            assert "%LEVEL%" not in name
+            assert "%PID%" not in name
+            assert "azure-foundry" in name
+            assert run_id in name
+            assert "WARNING" in name
+            assert str(os.getpid()) in name
+
+            # Ensure file handlers are closed before temporary directory cleanup on Windows.
+            root_logger = logging.getLogger()
+            for handler in list(root_logger.handlers):
+                handler.close()
+                root_logger.removeHandler(handler)
+
+        print("✓ Rotating file sink extended tokens work")
+        return True
+    except Exception as e:
+        print(f"\n✗ Rotating file sink extended token test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -432,6 +655,12 @@ def main():
     results.append(("Translation Cache Key", test_translation_cache_key_stability()))
     results.append(("CLI Cache Scope/Clear", test_cli_cache_scope_and_clear_cache()))
     results.append(("Cache Compatibility", test_cache_record_compatibility_filtering()))
+    results.append(("Logging Target Parsing", test_logging_target_parsing_and_fallback()))
+    results.append(("Rotating File Sink", test_rotating_file_sink_utf8_output()))
+    results.append(("Rotating File Sink DATETIME", test_rotating_file_sink_datetime_token()))
+    results.append(("Logging Retention Overrides", test_logging_config_retention_overrides()))
+    results.append(("Unknown Target Fallback", test_unknown_log_target_fallback_to_console()))
+    results.append(("Rotating File Sink Extended Tokens", test_rotating_file_sink_extended_tokens()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")
