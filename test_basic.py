@@ -585,6 +585,38 @@ def test_unknown_log_target_fallback_to_console():
         return False
 
 
+def test_epub_node_replacement_strips_raw_html_fragments():
+    """Test EPUB replacement path strips provider HTML fragments to plain text."""
+    print("\nTesting EPUB node replacement HTML-fragment sanitization...")
+
+    try:
+        from lexora.readers import EpubReader
+
+        reader = EpubReader()
+        html = "<html><body><p>Hello world</p></body></html>"
+        soup, nodes = reader.extract_translatable_nodes(html)
+        assert nodes, "Expected translatable text nodes"
+
+        updated = reader.replace_translatable_nodes(
+            soup,
+            nodes,
+            ["<p>Xin chao <strong>the gioi</strong></p>"],
+        )
+        normalized = " ".join(updated.split())
+
+        assert "<strong>" not in updated, "Raw HTML tags should not be rendered as text"
+        assert "&lt;p&gt;" not in updated, "Escaped raw HTML tags should not appear in EPUB text nodes"
+        assert "Xin chao the gioi" in normalized
+
+        print("✓ EPUB node replacement sanitizes raw HTML fragments")
+        return True
+    except Exception as e:
+        print(f"\n✗ EPUB node replacement sanitization test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_rotating_file_sink_extended_tokens():
     """Test file sink resolves LEVEL/RUN_ID/PROVIDER/PID tokens in filename."""
     print("\nTesting rotating file sink extended tokens...")
@@ -661,6 +693,7 @@ def main():
     results.append(("Logging Retention Overrides", test_logging_config_retention_overrides()))
     results.append(("Unknown Target Fallback", test_unknown_log_target_fallback_to_console()))
     results.append(("Rotating File Sink Extended Tokens", test_rotating_file_sink_extended_tokens()))
+    results.append(("EPUB Node Replacement Sanitization", test_epub_node_replacement_strips_raw_html_fragments()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")

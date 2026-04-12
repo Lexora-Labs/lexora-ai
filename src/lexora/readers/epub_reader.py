@@ -6,6 +6,7 @@ for the current translator contract, while preserving a clean DOM-driven
 foundation for future node-level translation and EPUB repacking.
 """
 
+from html import unescape
 from typing import List, Tuple
 
 import ebooklib
@@ -84,8 +85,25 @@ class EpubReader(FileReader):
     ) -> str:
         """Replace collected text nodes with translated content and render HTML."""
         for node, translated in zip(nodes, translated_texts):
-            node.replace_with(translated)
+            node.replace_with(self.normalize_node_text(translated))
         return str(soup)
+
+    def normalize_node_text(self, translated_text: str) -> str:
+        """Normalize provider text for safe text-node replacement.
+
+        Providers may occasionally return HTML fragments. For DOM text-node
+        replacement we always want plain text content, otherwise tags like
+        `<p>...</p>` will appear as raw text inside EPUB readers.
+        """
+        if translated_text is None:
+            return ""
+
+        normalized = str(translated_text)
+        if "<" in normalized and ">" in normalized:
+            fragment = BeautifulSoup(normalized, "lxml")
+            normalized = fragment.get_text(separator=" ", strip=False)
+
+        return unescape(normalized)
 
     def _extract_blocks_from_html(self, html: str) -> List[str]:
         """Extract text blocks from one XHTML/HTML document using DOM traversal."""
