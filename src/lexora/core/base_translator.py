@@ -88,7 +88,7 @@ class TranslationResult:
 @dataclass
 class TranslationConfig:
     """Configuration for translation operations."""
-    source_language: str = "en"
+    source_language: Optional[str] = None
     target_language: str = "vi"
     mode: TranslationMode = TranslationMode.BILINGUAL
     glossary: Dict[str, str] = field(default_factory=dict)
@@ -179,8 +179,10 @@ class BaseTranslator(ABC):
                 + "\n".join(glossary_lines)
             )
 
+        source_clause = f" from {config.source_language}" if config.source_language else ""
+
         return (
-            f"Translate the following text from {config.source_language} "
+            f"Translate the following text{source_clause} "
             f"to {config.target_language}.{glossary_block}\n\n"
             f"Text:\n{text}"
         )

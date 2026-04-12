@@ -2,9 +2,31 @@
 
 import sys
 import os
+import json
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+
+def _build_fake_provider():
+    from lexora.core import BaseTranslator, TranslationConfig, TranslationResult
+
+    class FakeProvider(BaseTranslator):
+        @property
+        def provider_name(self) -> str:
+            return "fake"
+
+        def is_configured(self) -> bool:
+            return True
+
+        def translate_text(self, text: str, config: TranslationConfig) -> TranslationResult:
+            translated = f"[{config.target_language}] {text}"
+            return TranslationResult(translated_content=translated, bilingual_ast=None)
+
+        def translate_batch(self, texts: list, config: TranslationConfig) -> list:
+            return [self.translate_text(text, config) for text in texts]
+
+    return FakeProvider()
 
 def test_imports():
     """Test that all modules can be imported."""
@@ -14,8 +36,15 @@ def test_imports():
         from lexora import Translator
         print("✓ Translator imported")
         
-        from lexora.services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
-        print("✓ Services imported")
+        from lexora.providers import (
+            OpenAIProvider,
+            AzureOpenAIProvider,
+            AzureAIFoundryProvider,
+            GeminiProvider,
+            AnthropicProvider,
+            QwenProvider,
+        )
+        print("✓ Providers imported")
         
         from lexora.readers import EpubReader, MobiReader, WordReader, MarkdownReader
         print("✓ Readers imported")
@@ -66,27 +95,54 @@ def test_reader_supports():
         return False
 
 
-def test_service_configuration():
-    """Test AI service configuration detection."""
-    print("\nTesting AI service configuration...")
+def test_provider_configuration():
+    """Test AI provider configuration detection."""
+    print("\nTesting AI provider configuration...")
     
     try:
-        from lexora.services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
+        from lexora.providers import (
+            OpenAIProvider,
+            AzureOpenAIProvider,
+            AzureAIFoundryProvider,
+        )
         
         # These should not raise errors even without configuration
-        openai_service = OpenAIService()
-        azure_openai_service = AzureOpenAIService()
-        azure_foundry_service = AzureAIFoundryService()
+        openai_provider = OpenAIProvider()
+        azure_openai_provider = AzureOpenAIProvider()
+        azure_foundry_provider = AzureAIFoundryProvider()
         
         # Check configuration status (should be False without env vars)
-        print(f"  OpenAI configured: {openai_service.is_configured()}")
-        print(f"  Azure OpenAI configured: {azure_openai_service.is_configured()}")
-        print(f"  Azure AI Foundry configured: {azure_foundry_service.is_configured()}")
+        print(f"  OpenAI configured: {openai_provider.is_configured()}")
+        print(f"  Azure OpenAI configured: {azure_openai_provider.is_configured()}")
+        print(f"  Azure AI Foundry configured: {azure_foundry_provider.is_configured()}")
         
-        print("\n✓ Service initialization tests passed!")
+        print("\n✓ Provider initialization tests passed!")
         return True
     except Exception as e:
-        print(f"\n✗ Service configuration test failed: {e}")
+        print(f"\n✗ Provider configuration test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_translator_with_provider():
+    """Test Translator against the canonical provider interface."""
+    print("\nTesting Translator with BaseTranslator provider...")
+
+    try:
+        from lexora import Translator
+
+        translator = Translator(provider=_build_fake_provider())
+        translated = translator.translate_text(
+            text="Hello, world!",
+            target_language="es",
+        )
+
+        assert translated == "[es] Hello, world!"
+        print("✓ Translator uses BaseTranslator providers correctly")
+        return True
+    except Exception as e:
+        print(f"\n✗ Translator/provider integration test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -201,6 +257,165 @@ def test_theme_system():
         return False
 
 
+def test_translation_cache_key_stability():
+    """Test cache key stability and fingerprint isolation behavior."""
+    print("\nTesting translation cache key stability...")
+
+    try:
+        from lexora.core import CacheFingerprint, build_cache_key, hash_glossary
+
+        fp1 = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"hello": "xin chao"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+        fp2 = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"hello": "xin chao"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+
+        content = "Hello, world!"
+        key1 = build_cache_key(content, fp1)
+        key1_repeat = build_cache_key(content, fp1)
+        key2 = build_cache_key(content, fp2)
+
+        assert key1 == key1_repeat, "Cache key must be deterministic"
+        assert key1 == key2, "Display mode should not affect translation cache key"
+        print("✓ Cache key stability and mode-agnostic reuse work")
+        return True
+
+    except Exception as e:
+        print(f"\n✗ Translation cache key test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_cli_cache_scope_and_clear_cache():
+    """Test CLI cache scope resolution and clear-cache helper behavior."""
+    print("\nTesting CLI cache scope and clear-cache helper...")
+
+    try:
+        import tempfile
+        from lexora.cli import _resolve_cache_path, _clear_cache_file
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = os.path.join(temp_dir, "book.epub")
+            with open(input_file, "w", encoding="utf-8") as f:
+                f.write("stub")
+
+            global_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="global",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+            per_ebook_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="per-ebook",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+            disabled_path = _resolve_cache_path(
+                input_file=input_file,
+                cache_scope="disabled",
+                cache_path=".lexora/cache/global_translation_cache.jsonl",
+                no_cache=False,
+            )
+
+            assert global_path.endswith("global_translation_cache.jsonl")
+            assert per_ebook_path is not None and "/per-ebook/" in per_ebook_path.replace("\\", "/")
+            assert disabled_path is None
+
+            cache_file = os.path.join(temp_dir, "cache.jsonl")
+            with open(cache_file, "w", encoding="utf-8") as cache_out:
+                cache_out.write('{"key":"k","translated_text":"v"}\n')
+
+            cleared = _clear_cache_file(cache_file)
+            assert "Cleared cache file" in cleared
+            assert not os.path.exists(cache_file)
+
+            missing = _clear_cache_file(cache_file)
+            assert "not found" in missing
+
+            disabled = _clear_cache_file(None)
+            assert "disabled" in disabled
+
+        print("✓ CLI cache scope and clear-cache helper work")
+        return True
+    except Exception as e:
+        print(f"\n✗ CLI cache scope/clear-cache test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_cache_record_compatibility_filtering():
+    """Test cache loader skips incompatible schema/pipeline records."""
+    print("\nTesting cache record compatibility filtering...")
+
+    try:
+        import tempfile
+        from lexora.core import CacheFingerprint, TranslationCache, build_cache_key, hash_glossary
+
+        fp = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({"book": "sach"}),
+            instruction_hash="abc",
+            chunking_version="sentence-aware-v1",
+            pipeline_version="epub-node-v1",
+        )
+        content = "Hello, world!"
+        compatible_key = build_cache_key(content, fp)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_path = os.path.join(temp_dir, "compat-cache.jsonl")
+            with open(cache_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "schema_version": "0.9",
+                    "key": compatible_key,
+                    "translated_text": "OLD",
+                    "fingerprint": {"pipeline_version": "epub-node-v1"},
+                }) + "\n")
+                f.write(json.dumps({
+                    "schema_version": "1.0",
+                    "key": compatible_key,
+                    "translated_text": "OLD_PIPELINE",
+                    "fingerprint": {"pipeline_version": "epub-node-v0"},
+                }) + "\n")
+                f.write(json.dumps({
+                    "schema_version": "1.0",
+                    "key": compatible_key,
+                    "translated_text": "NEW",
+                    "fingerprint": {"pipeline_version": "epub-node-v1"},
+                }) + "\n")
+
+            cache = TranslationCache(cache_path)
+            assert cache.get(content, fp) == "NEW", "Compatible cache record should be loaded"
+
+        print("✓ Cache compatibility filtering works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Cache compatibility filtering test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -210,9 +425,13 @@ def main():
     results = []
     results.append(("Imports", test_imports()))
     results.append(("Format Detection", test_reader_supports()))
-    results.append(("Service Configuration", test_service_configuration()))
+    results.append(("Provider Configuration", test_provider_configuration()))
+    results.append(("Translator Provider", test_translator_with_provider()))
     results.append(("Markdown Reader", test_markdown_reader()))
     results.append(("Theme System", test_theme_system()))
+    results.append(("Translation Cache Key", test_translation_cache_key_stability()))
+    results.append(("CLI Cache Scope/Clear", test_cli_cache_scope_and_clear_cache()))
+    results.append(("Cache Compatibility", test_cache_record_compatibility_filtering()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")

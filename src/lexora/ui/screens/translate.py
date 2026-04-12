@@ -12,10 +12,13 @@ Main translation workflow:
 import flet as ft
 from typing import Optional, Callable, Dict
 import threading
-import time
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 from lexora.ui.theme import Colors
+from lexora.translator import Translator
+from lexora.providers import create_provider
 
 
 # Provider configurations
@@ -38,16 +41,28 @@ LANGUAGES = [
     ("es", "Spanish"),
 ]
 
+UI_PROVIDER_TO_CANONICAL = {
+    "OpenAI": "openai",
+    "Azure OpenAI": "azure-openai",
+    "Gemini": "gemini",
+    "Anthropic": "anthropic",
+    "Qwen": "qwen",
+}
+
+load_dotenv()
+
 
 class TranslateScreen(ft.Container):
     """Translate screen with file upload and translation controls."""
 
     def __init__(self, page: ft.Page):
         super().__init__()
-        self.page = page
+        self._page = page
         self._selected_file: Optional[str] = None
         self._selected_name: Optional[str] = None
         self._is_translating = False
+        self._cancel_requested = False
+        self._active_job_id = 0
         self._build()
 
     def _build(self):
@@ -55,7 +70,7 @@ class TranslateScreen(ft.Container):
         
         # File Picker
         self.file_picker = ft.FilePicker(on_result=self._on_file_picked)
-        self.page.overlay.append(self.file_picker)
+        self._page.overlay.append(self.file_picker)
         
         # File display
         self.file_icon = ft.Icon(ft.icons.MENU_BOOK, color=Colors.PRIMARY, size=40)
@@ -259,8 +274,8 @@ class TranslateScreen(ft.Container):
     def _pick_file(self, e):
         """Open file picker."""
         self.file_picker.pick_files(
-            allowed_extensions=["epub"],
-            dialog_title="Select EPUB File",
+            allowed_extensions=["epub", "mobi", "docx", "doc", "md"],
+            dialog_title="Select file",
         )
 
     def _on_file_picked(self, e: ft.FilePickerResultEvent):
@@ -275,7 +290,7 @@ class TranslateScreen(ft.Container):
             self.file_path.value = str(Path(f.path).parent)
             self.translate_btn.disabled = False
             
-            self.page.update()
+            self._page.update()
 
     def _on_provider_change(self, e):
         """Handle provider selection change."""
@@ -283,83 +298,152 @@ class TranslateScreen(ft.Container):
         models = PROVIDERS.get(provider, [])
         self.model_dropdown.options = [ft.dropdown.Option(m) for m in models]
         self.model_dropdown.value = models[0] if models else None
-        self.page.update()
+        self._page.update()
 
     def _on_translate(self, e):
         """Start translation."""
         if not self._selected_file or self._is_translating:
             return
+
+        provider_label = self.provider_dropdown.value
+        model_name = self.model_dropdown.value
+        target_lang = self.language_dropdown.value
+
+        if not provider_label or not model_name or not target_lang:
+            self.status_text.value = "Please select provider, model, and language"
+            self.status_text.color = Colors.ERROR
+            self._page.update()
+            return
         
+        self._active_job_id += 1
+        current_job_id = self._active_job_id
         self._is_translating = True
+        self._cancel_requested = False
         self._update_ui_translating(True)
+        self.progress_bar.value = None
+        self.progress_text.value = "..."
+        self.status_text.value = "Starting translation..."
+        self.status_text.color = Colors.TEXT_SECONDARY
+        self.chapter_text.value = f"{provider_label} • {model_name} • {target_lang}"
+        self._page.update()
         
-        # Run mock translation in background
-        threading.Thread(target=self._run_translation, daemon=True).start()
+        # Run translation in background.
+        threading.Thread(
+            target=self._run_translation,
+            args=(current_job_id, provider_label, model_name, target_lang),
+            daemon=True,
+        ).start()
 
     def _on_cancel(self, e):
         """Cancel translation."""
-        self._is_translating = False
-        self._update_ui_translating(False)
-        self.status_text.value = "❌ Cancelled"
-        self.status_text.color = Colors.ERROR
-        self.page.update()
+        if not self._is_translating:
+            return
+
+        self._cancel_requested = True
+        self.cancel_btn.disabled = True
+        self.status_text.value = "Cancel requested..."
+        self.status_text.color = Colors.WARNING
+        self.chapter_text.value = "Waiting for current provider request to return."
+        self._page.update()
 
     def _update_ui_translating(self, translating: bool):
         """Update UI for translation state."""
         self.translate_btn.disabled = translating
         self.cancel_btn.visible = translating
+        self.cancel_btn.disabled = False
         self.progress_section.visible = translating
         self.output_section.visible = False
         self.provider_dropdown.disabled = translating
         self.model_dropdown.disabled = translating
         self.language_dropdown.disabled = translating
         self.select_btn.disabled = translating
-        self.page.update()
+        self._page.update()
 
-    def _run_translation(self):
-        """Run mock translation (to be replaced with real logic)."""
-        chapters = [
-            "Chapter 1: Introduction",
-            "Chapter 2: Getting Started",
-            "Chapter 3: Core Concepts",
-            "Chapter 4: Advanced Topics",
-            "Chapter 5: Best Practices",
-            "Chapter 6: Case Studies",
-            "Chapter 7: Conclusion",
-        ]
-        
-        for i, ch in enumerate(chapters):
-            if not self._is_translating:
+    def _build_provider(self, provider_label: str, model_name: str):
+        canonical_name = UI_PROVIDER_TO_CANONICAL.get(provider_label)
+        if not canonical_name:
+            raise ValueError(f"Unsupported provider: {provider_label}")
+
+        provider_kwargs: Dict[str, object] = {"debug": False}
+        if canonical_name == "azure-openai":
+            provider_kwargs["deployment"] = model_name
+        else:
+            provider_kwargs["model"] = model_name
+
+        provider = create_provider(canonical_name, **provider_kwargs)
+        if not provider.is_configured():
+            raise ValueError(f"Provider '{provider_label}' is not configured")
+        return provider
+
+    def _build_output_path(self, input_file: str, target_lang: str) -> str:
+        source = Path(input_file)
+        output_dir_env = os.getenv("LEXORA_UI_OUTPUT_DIR")
+        output_dir = Path(output_dir_env) if output_dir_env else source.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Keep markdown output as markdown; otherwise output plain text.
+        ext = ".md" if source.suffix.lower() == ".md" else ".txt"
+        return str(output_dir / f"{source.stem}_{target_lang}{ext}")
+
+    def _run_translation(
+        self,
+        job_id: int,
+        provider_label: str,
+        model_name: str,
+        target_lang: str,
+    ):
+        """Run translation with the real Lexora pipeline."""
+        try:
+            if not self._selected_file:
+                raise ValueError("No file selected")
+
+            provider = self._build_provider(provider_label, model_name)
+            translator = Translator(provider=provider)
+            output_file = self._build_output_path(self._selected_file, target_lang)
+
+            self.status_text.value = "Translating file..."
+            self.chapter_text.value = "Reading and translating content"
+            self._page.update()
+
+            translator.translate_file(
+                input_file=self._selected_file,
+                output_file=output_file,
+                target_language=target_lang,
+            )
+
+            if self._active_job_id != job_id:
                 return
-            
-            progress = (i + 1) / len(chapters)
-            self.progress_bar.value = progress
-            self.progress_text.value = f"{int(progress * 100)}%"
-            self.status_text.value = "Translating..."
-            self.status_text.color = Colors.TEXT_SECONDARY
-            self.chapter_text.value = ch
-            self.page.update()
-            time.sleep(1.0)
-        
-        # Complete
-        if self._is_translating:
-            self._is_translating = False
-            self.status_text.value = "✅ Translation completed!"
+
+            if self._cancel_requested:
+                self.status_text.value = "Cancelled"
+                self.status_text.color = Colors.WARNING
+                self.chapter_text.value = "Current provider request may still complete in background."
+                return
+
+            self.progress_bar.value = 1.0
+            self.progress_text.value = "100%"
+            self.status_text.value = "Translation completed"
             self.status_text.color = Colors.SUCCESS
             self.chapter_text.value = ""
-            
-            self.translate_btn.disabled = False
-            self.cancel_btn.visible = False
-            self.provider_dropdown.disabled = False
-            self.model_dropdown.disabled = False
-            self.language_dropdown.disabled = False
-            self.select_btn.disabled = False
-            
-            # Show output
-            lang = self.language_dropdown.value
-            out_file = self._selected_name.replace(".epub", f"_{lang}.epub")
-            self.output_name.value = out_file
-            self.output_path.value = str(Path(self._selected_file).parent)
+
+            output_path = Path(output_file)
+            self.output_name.value = output_path.name
+            self.output_path.value = str(output_path.parent)
             self.output_section.visible = True
-            
-            self.page.update()
+        except Exception as exc:
+            self.progress_bar.value = 0
+            self.progress_text.value = "0%"
+            self.status_text.value = f"Failed: {exc}"
+            self.status_text.color = Colors.ERROR
+            self.chapter_text.value = "Check credentials, model/deployment, and provider configuration."
+        finally:
+            if self._active_job_id == job_id:
+                self._is_translating = False
+                self.translate_btn.disabled = False
+                self.cancel_btn.visible = False
+                self.cancel_btn.disabled = False
+                self.provider_dropdown.disabled = False
+                self.model_dropdown.disabled = False
+                self.language_dropdown.disabled = False
+                self.select_btn.disabled = False
+                self._page.update()

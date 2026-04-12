@@ -1,0 +1,41 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+	<defs>
+		<linearGradient id="g1" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(512,0,0,172.032,0,333.68)">
+			<stop offset="0" stop-color="#003a80"/>
+			<stop offset="1" stop-color="#00d1ff"/>
+		</linearGradient>
+		<linearGradient id="g2" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0,499.712,-172.032,0,0,6)">
+			<stop offset="0" stop-color="#00f0ff"/>
+			<stop offset="1" stop-color="#0078ff"/>
+		</linearGradient>
+		<linearGradient id="g3" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(512,0,0,172.032,0,333.68)">
+			<stop offset="0" stop-color="#003a80"/>
+			<stop offset="1" stop-color="#00d1ff"/>
+		</linearGradient>
+		<linearGradient id="g4" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0,499.712,-172.032,0,0,6)">
+			<stop offset="0" stop-color="#00f0ff"/>
+			<stop offset="1" stop-color="#0078ff"/>
+		</linearGradient>
+		<linearGradient id="g5" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(180.224,0,0,180.224,188.416,262.048)">
+			<stop offset="0" stop-color="#ffffff"/>
+			<stop offset="1" stop-color="#000000"/>
+		</linearGradient>
+	</defs>
+	<style>
+		.s0 { fill: #ffffff } 
+		.s1 { fill: url(#g1) } 
+		.s2 { fill: url(#g2) } 
+		.s3 { fill: url(#g3) } 
+		.s4 { fill: url(#g4) } 
+		.s5 { fill: #ffffff;stroke: url(#g5);stroke-miterlimit:100 } 
+	</style>
+	<g id="Layer 1">
+		<path class="s0" d="m278.53 264.05q10.24 77.82 90.11 90.11-79.87 12.29-90.11 90.11-10.24-77.82-90.11-90.11 79.87-12.29 90.11-90.11z"/>
+		<path id="Layer copy" class="s1" d="m86.02 333.68h339.96c47.51 0 86.02 38.51 86.02 86.02 0 47.5-38.51 86.01-86.02 86.01h-339.96c-47.51 0-86.02-38.51-86.02-86.01 0-47.51 38.51-86.02 86.02-86.02z"/>
+		<path id="Layer copy 2" class="s2" d="m0 92.02q0-86.02 86.02-86.02 86.01 0 86.01 86.02v413.69h-172.03z"/>
+		<path id="Layer copy 3" class="s0" d="m278.53 264.05q10.24 77.82 90.11 90.11-79.87 12.29-90.11 90.11-10.24-77.82-90.11-90.11 79.87-12.29 90.11-90.11z"/>
+		<path id="Layer copy 4" class="s3" d="m86.02 333.68h339.96c47.51 0 86.02 38.51 86.02 86.02 0 47.5-38.51 86.01-86.02 86.01h-339.96c-47.51 0-86.02-38.51-86.02-86.01 0-47.51 38.51-86.02 86.02-86.02z"/>
+		<path id="Layer copy 5" class="s4" d="m0 92.02q0-86.02 86.02-86.02 86.01 0 86.01 86.02v413.69h-172.03z"/>
+		<path id="Layer copy 6" class="s5" d="m278.53 262.05q10.24 77.82 90.11 90.11-79.87 12.29-90.11 90.11-10.24-77.82-90.11-90.11 79.87-12.29 90.11-90.11z"/>
+	</g>
+</svg>

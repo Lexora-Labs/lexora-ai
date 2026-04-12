@@ -1,44 +1,126 @@
-"""EPUB file reader."""
+"""EPUB reader built on DOM parsing.
+
+This reader extracts readable text from EPUB XHTML documents without using
+regex-based parsing. It is intentionally conservative and returns plain text
+for the current translator contract, while preserving a clean DOM-driven
+foundation for future node-level translation and EPUB repacking.
+"""
+
+from typing import List, Tuple
 
 import ebooklib
+from bs4 import BeautifulSoup, NavigableString
 from ebooklib import epub
-from bs4 import BeautifulSoup
-from typing import List
+
 from .base_reader import FileReader
 
 
 class EpubReader(FileReader):
     """Reader for EPUB files."""
 
+    _PARAGRAPH_TAGS = (
+        "p",
+        "li",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "blockquote",
+        "div",
+        "section",
+    )
+
+    _SKIP_TAGS = {"script", "style", "code", "pre"}
+
     def supports(self, file_path: str) -> bool:
         """Check if file is an EPUB."""
-        return file_path.lower().endswith('.epub')
+        return file_path.lower().endswith(".epub")
 
     def read(self, file_path: str) -> str:
-        """
-        Read EPUB file and extract text content.
-
-        Args:
-            file_path: Path to the EPUB file
-
-        Returns:
-            str: Extracted text content
-        """
+        """Read EPUB and extract text from document items."""
         try:
             book = epub.read_epub(file_path)
+            text_blocks: List[str] = []
+
+            for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                html = item.get_content().decode("utf-8", errors="ignore")
+                text_blocks.extend(self._extract_blocks_from_html(html))
+
+            return "\n\n".join(block for block in text_blocks if block.strip())
         except Exception as e:
-            raise ValueError(f"Failed to read EPUB file: {str(e)}")
+            raise ValueError(f"Failed to read EPUB file: {str(e)}") from e
 
-        text_content = []
+    def load_book(self, file_path: str):
+        """Load an EPUB book object for translation/repack workflows."""
+        return epub.read_epub(file_path)
 
-        # Extract text from all document items
-        for item in book.get_items():
-            if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                content = item.get_content()
-                # Parse HTML content
-                soup = BeautifulSoup(content, 'html.parser')
-                text = soup.get_text(separator='\n', strip=True)
+    def iter_document_items(self, book):
+        """Yield document items (XHTML/HTML) from the EPUB."""
+        return book.get_items_of_type(ebooklib.ITEM_DOCUMENT)
+
+    def extract_translatable_nodes(self, html: str) -> Tuple[BeautifulSoup, List[NavigableString]]:
+        """Parse HTML/XHTML and return translatable text nodes."""
+        soup = BeautifulSoup(html, "lxml-xml")
+        nodes: List[NavigableString] = []
+
+        for text_node in soup.find_all(string=True):
+            if not isinstance(text_node, NavigableString):
+                continue
+            if not text_node.strip():
+                continue
+            if self._is_in_skipped_context(text_node):
+                continue
+            nodes.append(text_node)
+
+        return soup, nodes
+
+    def replace_translatable_nodes(
+        self,
+        soup: BeautifulSoup,
+        nodes: List[NavigableString],
+        translated_texts: List[str],
+    ) -> str:
+        """Replace collected text nodes with translated content and render HTML."""
+        for node, translated in zip(nodes, translated_texts):
+            node.replace_with(translated)
+        return str(soup)
+
+    def _extract_blocks_from_html(self, html: str) -> List[str]:
+        """Extract text blocks from one XHTML/HTML document using DOM traversal."""
+        soup = BeautifulSoup(html, "lxml-xml")
+        blocks: List[str] = []
+
+        for tag_name in self._PARAGRAPH_TAGS:
+            for node in soup.find_all(tag_name):
+                if self._should_skip_node(node):
+                    continue
+                text = node.get_text(separator=" ", strip=True)
                 if text:
-                    text_content.append(text)
+                    blocks.append(text)
 
-        return '\n\n'.join(text_content)
+        if blocks:
+            return blocks
+
+        # Fallback for documents that do not use common paragraph tags.
+        fallback = soup.get_text(separator="\n", strip=True)
+        return [fallback] if fallback else []
+
+    def _should_skip_node(self, node) -> bool:
+        """Skip nodes that are inside tags we should not translate as prose."""
+        for parent in [node, *node.parents]:
+            name = getattr(parent, "name", None)
+            if name and name.lower() in self._SKIP_TAGS:
+                return True
+        return False
+
+    def _is_in_skipped_context(self, node: NavigableString) -> bool:
+        """Return True when a text node is under script/style/code/pre tags."""
+        parent = node.parent
+        while parent is not None:
+            name = getattr(parent, "name", None)
+            if name and name.lower() in self._SKIP_TAGS:
+                return True
+            parent = parent.parent
+        return False

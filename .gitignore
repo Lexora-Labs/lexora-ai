@@ -218,6 +218,9 @@ __marimo__/
 *.jsonl
 gpt_translation_cache.jsonl
 book_final.jsonl
+
+# Temporary local cache snapshots
+.pycache_tmp/
 book_full.jsonl
 book5.jsonl
 

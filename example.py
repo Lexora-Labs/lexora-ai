@@ -2,24 +2,24 @@
 Example usage of Lexora AI translation tool.
 
 This example demonstrates how to:
-1. Set up an AI service (OpenAI, Azure OpenAI, or Azure AI Foundry)
+1. Set up a translation provider (OpenAI, Azure OpenAI, or Azure AI Foundry)
 2. Create a translator instance
 3. Translate files or text
 """
 
 from lexora import Translator
-from lexora.services import OpenAIService, AzureOpenAIService, AzureAIFoundryService
+from lexora.providers import OpenAIProvider, AzureOpenAIProvider, AzureAIFoundryProvider
 
 
 def example_with_openai():
-    """Example using OpenAI service."""
+    """Example using the OpenAI provider."""
     # Option 1: Use environment variable OPENAI_API_KEY
-    service = OpenAIService()
+    provider = OpenAIProvider()
     
     # Option 2: Provide API key directly
-    # service = OpenAIService(api_key="your-api-key-here", model="gpt-4")
+    # provider = OpenAIProvider(api_key="your-api-key-here", model="gpt-4o")
     
-    translator = Translator(service=service)
+    translator = Translator(provider=provider)
     
     # Translate a file
     translator.translate_file(
@@ -31,15 +31,15 @@ def example_with_openai():
 
 
 def example_with_azure_openai():
-    """Example using Azure OpenAI service."""
+    """Example using the Azure OpenAI provider."""
     # Use environment variables or provide directly
-    service = AzureOpenAIService(
+    provider = AzureOpenAIProvider(
         api_key="your-azure-key",
         endpoint="https://your-resource.openai.azure.com/",
         deployment="your-deployment-name"
     )
     
-    translator = Translator(service=service)
+    translator = Translator(provider=provider)
     
     # Translate text directly
     translated = translator.translate_text(
@@ -50,14 +50,14 @@ def example_with_azure_openai():
 
 
 def example_with_azure_ai_foundry():
-    """Example using Azure AI Foundry service."""
-    service = AzureAIFoundryService(
+    """Example using the Azure AI Foundry provider."""
+    provider = AzureAIFoundryProvider(
         api_key="your-foundry-key",
         endpoint="https://your-endpoint.inference.ai.azure.com",
         model="your-model-name"
     )
     
-    translator = Translator(service=service)
+    translator = Translator(provider=provider)
     
     # Translate a markdown file
     translator.translate_file(
@@ -68,8 +68,8 @@ def example_with_azure_ai_foundry():
 
 
 def example_auto_detect_service():
-    """Example with auto-detected service from environment variables."""
-    # This will automatically use the first configured service
+    """Example with auto-detected provider from environment variables."""
+    # This will automatically use the first configured provider
     # based on environment variables
     translator = Translator()
     
