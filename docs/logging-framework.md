@@ -39,11 +39,36 @@ Supported sinks:
 2. `file` (rotating)
 3. `azure` (Azure Monitor / Application Insights export)
 4. `aws` (CloudWatch export)
+5. `ui` (in-app sink for desktop log rendering)
 
 Target selection model:
 
 - Comma-separated list from config, for example: `console,file` or `console,azure`.
 - Multiple sinks can be enabled at once.
+- UI sink can be combined with other sinks, for example: `console,file,ui`.
+
+## Generic Logging Structure (Winston Mapping)
+
+The framework follows the same generic structure used by Winston-style systems:
+
+1. Logger
+2. Levels
+3. Formatter
+4. Transports (sinks)
+5. Per-transport configuration
+6. Context fields
+
+Winston-to-Lexora mapping:
+
+| Winston concept | Lexora plan |
+|---|---|
+| `createLogger(...)` | Centralized logger bootstrap module |
+| `level` | `LEXORA_LOG_LEVEL` |
+| `format.combine(...)` | Shared formatter + structured event contract |
+| `transports.Console` | `console` sink |
+| `transports.File` | `file` sink with rotation |
+| Cloud transports/plugins | `azure` and `aws` sinks |
+| Custom transport | `ui` sink for desktop rendering |
 
 ## Configuration Model
 
@@ -58,6 +83,45 @@ Planned configuration keys (env and CLI override ready):
 - `LEXORA_AWS_LOG_GROUP`
 - `LEXORA_AWS_LOG_STREAM`
 - `LEXORA_AWS_REGION`
+- `LEXORA_LOG_UI_BUFFER_SIZE` (default: `500`)
+- `LEXORA_LOG_UI_MIN_LEVEL` (default: `INFO`)
+
+## Log File Naming Pattern (Winston-Inspired)
+
+Follow a Winston-style date token convention for file sinks.
+
+Pattern baseline:
+
+- `lexora-%DATE%.log`
+
+Date token format:
+
+- `%DATE%` -> `YYYY-MM-DD`
+
+Recommended variants:
+
+1. Combined app log:
+	- `lexora-%DATE%.log`
+2. Error-only log:
+	- `lexora-error-%DATE%.log`
+3. Optional provider-segmented log:
+	- `lexora-{provider}-%DATE%.log`
+
+Examples:
+
+- `lexora-2026-04-12.log`
+- `lexora-error-2026-04-12.log`
+- `lexora-azure-foundry-2026-04-12.log`
+
+Windows-safe rule:
+
+- Do not include `:` in file names; use date-only token (`YYYY-MM-DD`) for portability.
+
+Rotation behavior:
+
+- Date-based file naming plus size-based rotation is allowed.
+- If size rotation occurs within the same day, append numeric suffixes:
+  - `lexora-2026-04-12.log.1`, `lexora-2026-04-12.log.2`
 
 ## Structured Event Contract
 
@@ -82,8 +146,10 @@ Common fields expected on operational events:
 The framework must support UI rendering by exposing a UI-safe log feed model:
 
 - UI receives formatted or structured log events from the shared logger path.
+- UI sink target name is `ui` and must subscribe to the same event contract as other sinks.
 - UI does not define separate translation logs; it renders the same events emitted by CLI/core.
 - UI-level filters can scope by level, stage, or run id.
+- UI buffer should be bounded and drop oldest entries first to avoid memory pressure.
 - Long-running translation should stream logs incrementally to avoid frozen status displays.
 
 ## Rollout Plan
