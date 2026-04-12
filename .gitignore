@@ -224,8 +224,9 @@ book_final.jsonl
 book_full.jsonl
 book5.jsonl
 
-# EPUB files
+# EPUB files (copyright-sensitive source/output books)
 *.epub
+*.EPUB
 
 # Test/debug files
 test_auth.py
