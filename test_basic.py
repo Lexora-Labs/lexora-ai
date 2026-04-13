@@ -585,7 +585,7 @@ def test_unknown_log_target_fallback_to_console():
         return False
 
 
-def test_epub_node_replacement_strips_raw_html_fragments():
+def _check_epub_node_replacement_strips_raw_html_fragments() -> bool:
     """Test EPUB replacement path strips provider HTML fragments to plain text."""
     print("\nTesting EPUB node replacement HTML-fragment sanitization...")
 
@@ -615,6 +615,11 @@ def test_epub_node_replacement_strips_raw_html_fragments():
         import traceback
         traceback.print_exc()
         return False
+
+
+def test_epub_node_replacement_strips_raw_html_fragments():
+    """Pytest entrypoint for EPUB replacement sanitization regression."""
+    assert _check_epub_node_replacement_strips_raw_html_fragments()
 
 
 def test_rotating_file_sink_extended_tokens():
@@ -693,7 +698,7 @@ def main():
     results.append(("Logging Retention Overrides", test_logging_config_retention_overrides()))
     results.append(("Unknown Target Fallback", test_unknown_log_target_fallback_to_console()))
     results.append(("Rotating File Sink Extended Tokens", test_rotating_file_sink_extended_tokens()))
-    results.append(("EPUB Node Replacement Sanitization", test_epub_node_replacement_strips_raw_html_fragments()))
+    results.append(("EPUB Node Replacement Sanitization", _check_epub_node_replacement_strips_raw_html_fragments()))
     
     print("\n" + "=" * 60)
     print("Test Results Summary")
