@@ -97,7 +97,8 @@ Core dependency policy:
 Planned optional packages:
 
 1. Azure sink:
-	- preferred: `azure-monitor-opentelemetry`
+	- current implementation: `opencensus-ext-azure`
+	- future migration target: `azure-monitor-opentelemetry`
 2. AWS sink:
 	- `watchtower`
 	- `boto3`

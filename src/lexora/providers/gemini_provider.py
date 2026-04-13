@@ -7,6 +7,7 @@ Implements BaseTranslator for Google Gemini models.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict
 
 from lexora.core.base_translator import (
@@ -65,6 +66,7 @@ class GeminiProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client = None
+        self._logger = logging.getLogger("lexora.providers.gemini")
 
     @property
     def provider_name(self) -> str:
@@ -149,7 +151,12 @@ class GeminiProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(f"[gemini] model={self._model_name} chars={len(text)} attempt={attempt + 1}")
+                    self._logger.debug(
+                        "provider.request.started provider=gemini model=%s chars=%s attempt=%s",
+                        self._model_name,
+                        len(text),
+                        attempt + 1,
+                    )
                 
                 t0 = time.time()
                 response = client.models.generate_content(
@@ -183,18 +190,30 @@ class GeminiProvider(BaseTranslator):
                     total_tokens["total_tokens"] += getattr(usage, 'total_token_count', 0)
                 
                 if self._debug:
-                    print(f"[gemini] {len(translated)} chars in {time.time() - t0:.2f}s")
+                    self._logger.debug(
+                        "provider.request.completed provider=gemini model=%s chars=%s elapsed_ms=%s",
+                        self._model_name,
+                        len(translated),
+                        round((time.time() - t0) * 1000),
+                    )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[gemini] error: {type(e).__name__}: {e}")
+                    self._logger.exception(
+                        "provider.request.failed provider=gemini model=%s error_type=%s",
+                        self._model_name,
+                        type(e).__name__,
+                    )
                 
                 # Handle safety blocks
                 if "blocked" in str(e).lower() or "safety" in str(e).lower():
                     if self._debug:
-                        print("[gemini] Safety filter triggered, returning original")
+                        self._logger.warning(
+                            "provider.request.blocked provider=gemini model=%s reason=safety_filter",
+                            self._model_name,
+                        )
                     return text
                 
                 time.sleep(sleep * (attempt + 1))

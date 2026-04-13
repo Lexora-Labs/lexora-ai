@@ -8,6 +8,7 @@ Extracted and refactored from azure_epub_gpt_translator.py.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict, Any
 
 from openai import AzureOpenAI
@@ -60,6 +61,7 @@ class AzureOpenAIProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[AzureOpenAI] = None
+        self._logger = logging.getLogger("lexora.providers.azure_openai")
 
     @property
     def provider_name(self) -> str:
@@ -212,10 +214,11 @@ class AzureOpenAIProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(
-                        f"[azure_openai] chat.completions.create "
-                        f"deployment={self._deployment} chars={len(text)} "
-                        f"attempt={attempt + 1}"
+                    self._logger.debug(
+                        "provider.request.started provider=azure_openai deployment=%s chars=%s attempt=%s",
+                        self._deployment,
+                        len(text),
+                        attempt + 1,
                     )
                 
                 t0 = time.time()
@@ -239,25 +242,30 @@ class AzureOpenAIProvider(BaseTranslator):
                 
                 if self._debug:
                     dt = time.time() - t0
-                    preview = translated[:160].replace("\n", " ")
-                    print(
-                        f"[azure_openai] response {len(translated)} chars "
-                        f"in {dt:.2f}s: {preview}..."
+                    self._logger.debug(
+                        "provider.request.completed provider=azure_openai deployment=%s chars=%s elapsed_ms=%s",
+                        self._deployment,
+                        len(translated),
+                        round(dt * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[azure_openai] error: {type(e).__name__}: {e}")
+                    self._logger.exception(
+                        "provider.request.failed provider=azure_openai deployment=%s error_type=%s",
+                        self._deployment,
+                        type(e).__name__,
+                    )
                 
                 # Handle content filter errors gracefully
                 error_str = str(e)
                 if "content_filter" in error_str or "ResponsibleAIPolicyViolation" in error_str:
                     if self._debug:
-                        print(
-                            "[azure_openai] Content filter triggered, "
-                            "returning original text"
+                        self._logger.warning(
+                            "provider.request.blocked provider=azure_openai deployment=%s reason=content_filter",
+                            self._deployment,
                         )
                     return text
                 

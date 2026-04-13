@@ -8,6 +8,7 @@ import flet as ft
 import os
 import subprocess
 import platform
+import logging
 from typing import Optional
 from pathlib import Path
 
@@ -19,6 +20,7 @@ class OutputPanel(ft.Container):
 
     def __init__(self):
         super().__init__()
+        self._logger = logging.getLogger("lexora.ui.output_panel")
         self.output_path: Optional[str] = None
         self._build_ui()
         self.visible = False
@@ -140,8 +142,8 @@ class OutputPanel(ft.Container):
                 os.startfile(self.output_path)
             else:  # Linux
                 subprocess.run(["xdg-open", self.output_path], check=True)
-        except Exception as ex:
-            print(f"Error opening file: {ex}")
+        except Exception:
+            self._logger.exception("ui.output.open_file.failed path=%s", self.output_path)
 
     def _on_open_folder(self, e):
         """Open the folder containing the output file."""
@@ -160,5 +162,5 @@ class OutputPanel(ft.Container):
                 os.startfile(folder)
             else:  # Linux
                 subprocess.run(["xdg-open", folder], check=True)
-        except Exception as ex:
-            print(f"Error opening folder: {ex}")
+        except Exception:
+            self._logger.exception("ui.output.open_folder.failed folder=%s", folder)

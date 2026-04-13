@@ -7,6 +7,7 @@ Implements BaseTranslator for OpenAI GPT models (direct API, not Azure).
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict
 
 from lexora.core.base_translator import (
@@ -62,6 +63,7 @@ class OpenAIProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None
+        self._logger = logging.getLogger("lexora.providers.openai")
 
     @property
     def provider_name(self) -> str:
@@ -145,7 +147,12 @@ class OpenAIProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(f"[openai] model={self._model} chars={len(text)} attempt={attempt + 1}")
+                    self._logger.debug(
+                        "provider.request.started provider=openai model=%s chars=%s attempt=%s",
+                        self._model,
+                        len(text),
+                        attempt + 1,
+                    )
                 
                 t0 = time.time()
                 response = client.chat.completions.create(
@@ -165,13 +172,22 @@ class OpenAIProvider(BaseTranslator):
                     total_tokens["total_tokens"] += response.usage.total_tokens or 0
                 
                 if self._debug:
-                    print(f"[openai] {len(translated)} chars in {time.time() - t0:.2f}s")
+                    self._logger.debug(
+                        "provider.request.completed provider=openai model=%s chars=%s elapsed_ms=%s",
+                        self._model,
+                        len(translated),
+                        round((time.time() - t0) * 1000),
+                    )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[openai] error: {type(e).__name__}: {e}")
+                    self._logger.exception(
+                        "provider.request.failed provider=openai model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
                 time.sleep(sleep * (attempt + 1))
                 if attempt == retry - 1:
                     raise

@@ -7,6 +7,7 @@ Implements BaseTranslator for Anthropic Claude models.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict
 
 from lexora.core.base_translator import (
@@ -65,6 +66,7 @@ class AnthropicProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client = None
+        self._logger = logging.getLogger("lexora.providers.anthropic")
 
     @property
     def provider_name(self) -> str:
@@ -147,7 +149,12 @@ class AnthropicProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(f"[anthropic] model={self._model} chars={len(text)} attempt={attempt + 1}")
+                    self._logger.debug(
+                        "provider.request.started provider=anthropic model=%s chars=%s attempt=%s",
+                        self._model,
+                        len(text),
+                        attempt + 1,
+                    )
                 
                 t0 = time.time()
                 response = client.messages.create(
@@ -173,18 +180,30 @@ class AnthropicProvider(BaseTranslator):
                     total_tokens["output_tokens"] += response.usage.output_tokens or 0
                 
                 if self._debug:
-                    print(f"[anthropic] {len(translated)} chars in {time.time() - t0:.2f}s")
+                    self._logger.debug(
+                        "provider.request.completed provider=anthropic model=%s chars=%s elapsed_ms=%s",
+                        self._model,
+                        len(translated),
+                        round((time.time() - t0) * 1000),
+                    )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[anthropic] error: {type(e).__name__}: {e}")
+                    self._logger.exception(
+                        "provider.request.failed provider=anthropic model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
                 
                 # Handle content blocks
                 if "content" in str(e).lower() and "block" in str(e).lower():
                     if self._debug:
-                        print("[anthropic] Content blocked, returning original")
+                        self._logger.warning(
+                            "provider.request.blocked provider=anthropic model=%s reason=content_block",
+                            self._model,
+                        )
                     return text
                 
                 time.sleep(sleep * (attempt + 1))
