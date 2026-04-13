@@ -159,3 +159,13 @@ python -m lexora.cli translate .\book.epub .\out-gemini.epub --target vi --servi
 python -m lexora.cli translate .\book.epub .\out-anthropic.epub --target vi --service anthropic --limit-docs 1
 python -m lexora.cli translate .\book.epub .\out-qwen.epub --target vi --service qwen --limit-docs 1
 ```
+
+## Troubleshooting
+
+OpenAI `429` with `insufficient_quota`:
+- Meaning: your key is valid, but the OpenAI account/org has no available quota/credits.
+- Action:
+	1. Check billing/credits in OpenAI dashboard.
+	2. Confirm the key belongs to the expected org/project.
+	3. Retry after quota is available.
+- Billing page: https://platform.openai.com/settings/organization/billing

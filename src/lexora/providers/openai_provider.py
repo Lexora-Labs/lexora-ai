@@ -170,6 +170,13 @@ class OpenAIProvider(BaseTranslator):
                 return translated
                 
             except Exception as e:
+                if self._is_insufficient_quota_error(e):
+                    raise ValueError(
+                        "OpenAI quota exceeded (insufficient_quota). "
+                        "Check your OpenAI billing/plan and available credits at "
+                        "https://platform.openai.com/settings/organization/billing"
+                    ) from e
+
                 if self._debug:
                     print(f"[openai] error: {type(e).__name__}: {e}")
                 time.sleep(sleep * (attempt + 1))
@@ -183,3 +190,11 @@ class OpenAIProvider(BaseTranslator):
             f"{index}:{text[:100]}".encode("utf-8")
         ).hexdigest()[:12]
         return f"node_{index}_{content_hash}"
+
+    def _is_insufficient_quota_error(self, error: Exception) -> bool:
+        """Return True when OpenAI responds with insufficient quota."""
+        message = str(error).lower()
+        return (
+            "insufficient_quota" in message
+            or "exceeded your current quota" in message
+        )
