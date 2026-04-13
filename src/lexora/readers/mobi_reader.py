@@ -1,6 +1,4 @@
 """MOBI file reader."""
-
-import mobi
 from .base_reader import FileReader
 
 
@@ -22,6 +20,7 @@ class MobiReader(FileReader):
             str: Extracted text content
         """
         try:
+            import mobi
             tempdir, filepath = mobi.extract(file_path)
             
             # Read the extracted HTML file

@@ -18,11 +18,13 @@ from lexora.core.base_translator import (
 )
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types as genai_types
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
     genai = None
+    genai_types = None
 
 
 class GeminiProvider(BaseTranslator):
@@ -54,15 +56,15 @@ class GeminiProvider(BaseTranslator):
         """
         if not GEMINI_AVAILABLE:
             raise ImportError(
-                "google-generativeai package not installed. "
-                "Run: pip install google-generativeai"
+                "google-genai package not installed. "
+                "Run: pip install google-genai"
             )
         
         self._api_key = api_key or os.getenv("GOOGLE_API_KEY")
         self._model_name = model
         self._temperature = temperature
         self._debug = debug
-        self._model = None
+        self._client = None
 
     @property
     def provider_name(self) -> str:
@@ -71,22 +73,14 @@ class GeminiProvider(BaseTranslator):
     def is_configured(self) -> bool:
         return bool(self._api_key)
 
-    def _get_model(self):
-        if self._model is None:
+    def _get_client(self):
+        if self._client is None:
             if not self.is_configured():
                 raise ValueError(
                     "Gemini is not configured. Set GOOGLE_API_KEY environment variable."
                 )
-            genai.configure(api_key=self._api_key)
-            
-            generation_config = genai.GenerationConfig(
-                temperature=self._temperature,
-            )
-            self._model = genai.GenerativeModel(
-                model_name=self._model_name,
-                generation_config=generation_config,
-            )
-        return self._model
+            self._client = genai.Client(api_key=self._api_key)
+        return self._client
 
     def translate_text(
         self,
@@ -106,7 +100,7 @@ class GeminiProvider(BaseTranslator):
         retry: int = 3,
         sleep: float = 1.0,
     ) -> List[TranslationResult]:
-        model = self._get_model()
+        client = self._get_client()
         results: List[TranslationResult] = []
         system_instruction = self.get_system_instruction(config)
         
@@ -121,7 +115,7 @@ class GeminiProvider(BaseTranslator):
             full_prompt = f"{system_instruction}\n\n{prompt}"
             
             translated = self._call_api_with_retry(
-                model, full_prompt, text, retry, sleep, total_tokens
+                client, full_prompt, text, retry, sleep, total_tokens
             )
             
             node = BilingualNode(
@@ -145,7 +139,7 @@ class GeminiProvider(BaseTranslator):
 
     def _call_api_with_retry(
         self,
-        model,
+        client,
         prompt: str,
         text: str,
         retry: int,
@@ -158,9 +152,28 @@ class GeminiProvider(BaseTranslator):
                     print(f"[gemini] model={self._model_name} chars={len(text)} attempt={attempt + 1}")
                 
                 t0 = time.time()
-                response = model.generate_content(prompt)
-                
-                translated = response.text.strip()
+                response = client.models.generate_content(
+                    model=self._model_name,
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        temperature=self._temperature,
+                    ),
+                )
+
+                translated = (getattr(response, "text", None) or "").strip()
+                if not translated:
+                    candidates = getattr(response, "candidates", None) or []
+                    first_candidate = candidates[0] if candidates else None
+                    content = getattr(first_candidate, "content", None)
+                    parts = getattr(content, "parts", None) or []
+                    text_parts = [
+                        getattr(part, "text", "")
+                        for part in parts
+                        if getattr(part, "text", None)
+                    ]
+                    translated = "".join(text_parts).strip()
+                if not translated:
+                    translated = text
                 
                 # Track token usage if available
                 if hasattr(response, 'usage_metadata'):
