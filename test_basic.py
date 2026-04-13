@@ -437,6 +437,100 @@ def test_logging_target_parsing_and_fallback():
         return False
 
 
+def test_ui_sink_buffer_and_min_level():
+    """Test UI sink stores bounded events and applies min-level filtering."""
+    print("\nTesting UI sink buffering and level filter...")
+
+    try:
+        import logging
+        from lexora.logging_framework import (
+            build_logging_config,
+            clear_ui_log_events,
+            configure_logging,
+            get_ui_log_events,
+        )
+
+        clear_ui_log_events()
+        config = build_logging_config(
+            level="DEBUG",
+            targets="ui",
+        )
+        config["ui_buffer_size"] = 2
+        config["ui_min_level"] = "INFO"
+
+        logger = configure_logging(config).getChild("test.ui")
+        logger.debug("debug should be filtered")
+        logger.info("info one")
+        logger.warning("warn two")
+        logger.error("error three")
+
+        events = get_ui_log_events()
+        assert len(events) == 2, "UI buffer must keep only latest bounded events"
+        assert events[0]["level"] == "WARNING"
+        assert events[1]["level"] == "ERROR"
+
+        root_logger = logging.getLogger()
+        for handler in list(root_logger.handlers):
+            handler.close()
+            root_logger.removeHandler(handler)
+        root_logger.filters.clear()
+
+        print("✓ UI sink buffering and min-level filtering work")
+        return True
+    except Exception as e:
+        print(f"\n✗ UI sink buffering test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_structured_event_record_fields():
+    """Test structured logging extras are stored in UI events."""
+    print("\nTesting structured event field capture...")
+
+    try:
+        import logging
+        from lexora.logging_framework import (
+            build_logging_config,
+            clear_ui_log_events,
+            configure_logging,
+            get_ui_log_events,
+        )
+
+        clear_ui_log_events()
+        config = build_logging_config(level="INFO", targets="ui", provider="openai", run_id="testrun01")
+        logger = configure_logging(config).getChild("test.structured")
+        logger.info(
+            "translation.epub.started",
+            extra={
+                "event": "translation.epub.started",
+                "fields": {"doc_total": 3, "chunks": 12},
+            },
+        )
+
+        events = get_ui_log_events()
+        assert events, "Expected one structured UI event"
+        event = events[-1]
+        assert event["event"] == "translation.epub.started"
+        assert event["fields"]["doc_total"] == 3
+        assert event["provider"] == "openai"
+        assert event["run_id"] == "testrun01"
+
+        root_logger = logging.getLogger()
+        for handler in list(root_logger.handlers):
+            handler.close()
+            root_logger.removeHandler(handler)
+        root_logger.filters.clear()
+
+        print("✓ Structured event fields captured in UI sink")
+        return True
+    except Exception as e:
+        print(f"\n✗ Structured event capture test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_rotating_file_sink_utf8_output():
     """Test file sink creates UTF-8 logs with date token filename pattern."""
     print("\nTesting rotating file sink UTF-8 output...")
@@ -693,6 +787,8 @@ def main():
     results.append(("CLI Cache Scope/Clear", test_cli_cache_scope_and_clear_cache()))
     results.append(("Cache Compatibility", test_cache_record_compatibility_filtering()))
     results.append(("Logging Target Parsing", test_logging_target_parsing_and_fallback()))
+    results.append(("UI Sink Buffer/Level", test_ui_sink_buffer_and_min_level()))
+    results.append(("Structured Event Capture", test_structured_event_record_fields()))
     results.append(("Rotating File Sink", test_rotating_file_sink_utf8_output()))
     results.append(("Rotating File Sink DATETIME", test_rotating_file_sink_datetime_token()))
     results.append(("Logging Retention Overrides", test_logging_config_retention_overrides()))

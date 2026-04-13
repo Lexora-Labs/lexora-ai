@@ -58,6 +58,12 @@ class Translator:
             MarkdownReader(),
         ]
 
+    def _log_event(self, level: int, event: str, **fields: object) -> None:
+        """Emit a structured event while keeping text logs readable."""
+        compact = " ".join(f"{key}={value}" for key, value in fields.items())
+        message = f"{event} | {compact}" if compact else event
+        self.logger.log(level, message, extra={"event": event, "fields": fields})
+
     def _get_default_provider(self) -> BaseTranslator:
         """Get the first configured translation provider."""
         return get_default_provider()
@@ -123,17 +129,25 @@ class Translator:
             )
 
         # Read the file
-        self.logger.info("Reading %s...", input_file)
+        self._log_event(
+            logging.INFO,
+            "translation.read_input.started",
+            input_file=input_file,
+            target_language=target_language,
+        )
         text = reader.read(input_file)
 
         if not text.strip():
             raise ValueError("No text content found in the file")
 
         # Translate the text
-        self.logger.info(
-            "Translating to %s with %s...",
-            target_language,
-            self.provider.provider_name,
+        self._log_event(
+            logging.INFO,
+            "translation.text.started",
+            provider=self.provider.provider_name,
+            target_language=target_language,
+            source_language=source_language or "auto",
+            chunks=1,
         )
         result = self.translate_text_result(
             text=text,
@@ -150,7 +164,14 @@ class Translator:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(result.translated_content)
         
-        self.logger.info("Translation saved to %s", output_file)
+        self._log_event(
+            logging.INFO,
+            "translation.text.completed",
+            provider=self.provider.provider_name,
+            input_file=input_file,
+            output_file=output_file,
+            elapsed_ms=0,
+        )
         return result
 
     def _translate_epub_file(
@@ -168,7 +189,14 @@ class Translator:
         end_doc: Optional[int] = None,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
-        self.logger.info("Reading EPUB %s...", input_file)
+        self._log_event(
+            logging.INFO,
+            "translation.epub.read.started",
+            input_file=input_file,
+            output_file=output_file,
+            target_language=target_language,
+            provider=self.provider.provider_name,
+        )
         book = reader.load_book(input_file)
         docs = list(reader.iter_document_items(book))
         docs = self._select_epub_docs(
@@ -201,28 +229,39 @@ class Translator:
         total_cache_misses = 0
         translated_docs = 0
 
-        self.logger.info(
-            "[epub] Starting translation: docs=%s target=%s provider=%s",
-            len(docs),
-            target_language,
-            self.provider.provider_name,
+        self._log_event(
+            logging.INFO,
+            "translation.epub.started",
+            provider=self.provider.provider_name,
+            target_language=target_language,
+            source_language=source_language or "auto",
+            input_file=input_file,
+            output_file=output_file,
+            doc_total=len(docs),
         )
         for doc_index, item in enumerate(docs, start=1):
             doc_started_at = time.perf_counter()
-            self.logger.info(
-                "[epub] [%s/%s] Translating %s...",
-                doc_index,
-                len(docs),
-                item.get_name(),
+            self._log_event(
+                logging.INFO,
+                "translation.epub.doc.started",
+                doc_index=doc_index,
+                doc_total=len(docs),
+                input_file=input_file,
+                output_file=output_file,
+                provider=self.provider.provider_name,
+                item_name=item.get_name(),
             )
 
             html = item.get_content().decode("utf-8", errors="ignore")
             soup, text_nodes = reader.extract_translatable_nodes(html)
             if not text_nodes:
-                self.logger.info(
-                    "[epub] [%s/%s] No translatable nodes, skipped",
-                    doc_index,
-                    len(docs),
+                self._log_event(
+                    logging.INFO,
+                    "translation.epub.doc.skipped",
+                    doc_index=doc_index,
+                    doc_total=len(docs),
+                    item_name=item.get_name(),
+                    reason="no_translatable_nodes",
                 )
                 continue
 
@@ -260,11 +299,13 @@ class Translator:
 
             batch_results: List[TranslationResult] = []
             if uncached_texts:
-                self.logger.info(
-                    "[epub] [%s/%s] Provider translating %s chunk(s)...",
-                    doc_index,
-                    len(docs),
-                    len(uncached_texts),
+                self._log_event(
+                    logging.INFO,
+                    "translation.epub.provider_batch.started",
+                    doc_index=doc_index,
+                    doc_total=len(docs),
+                    provider=self.provider.provider_name,
+                    chunks=len(uncached_texts),
                 )
                 batch_results = self.provider.translate_batch(uncached_texts, config)
 
@@ -307,15 +348,16 @@ class Translator:
             total_cache_misses += doc_cache_misses
 
             doc_elapsed = time.perf_counter() - doc_started_at
-            self.logger.info(
-                "[epub] [%s/%s] Done nodes=%s chunks=%s cache_hit=%s cache_miss=%s time=%.1fs",
-                doc_index,
-                len(docs),
-                len(text_nodes),
-                len(chunked_texts),
-                doc_cache_hits,
-                doc_cache_misses,
-                doc_elapsed,
+            self._log_event(
+                logging.INFO,
+                "translation.epub.doc.completed",
+                doc_index=doc_index,
+                doc_total=len(docs),
+                chunks=len(chunked_texts),
+                cache_hit=doc_cache_hits,
+                cache_miss=doc_cache_misses,
+                elapsed_ms=round(doc_elapsed * 1000),
+                provider=self.provider.provider_name,
             )
 
         output_path = Path(output_file)
@@ -338,19 +380,27 @@ class Translator:
         )
         total_elapsed = time.perf_counter() - started_at
         cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
-        self.logger.info(
-            "[epub] Summary docs=%s/%s nodes=%s chunks=%s cache_hit=%s cache_miss=%s cache_hit_rate=%.1f%% tokens=%s time=%.1fs",
-            translated_docs,
-            len(docs),
-            total_nodes,
-            total_chunks,
-            total_cache_hits,
-            total_cache_misses,
-            cache_rate,
-            token_usage.get("total_tokens", 0),
-            total_elapsed,
+        self._log_event(
+            logging.INFO,
+            "translation.epub.completed",
+            provider=self.provider.provider_name,
+            input_file=input_file,
+            output_file=output_file,
+            doc_index=translated_docs,
+            doc_total=len(docs),
+            chunks=total_chunks,
+            cache_hit=total_cache_hits,
+            cache_miss=total_cache_misses,
+            elapsed_ms=round(total_elapsed * 1000),
+            token_total=token_usage.get("total_tokens", 0),
+            cache_hit_rate=round(cache_rate, 1),
         )
-        self.logger.info("Translation saved to %s", output_file)
+        self._log_event(
+            logging.INFO,
+            "translation.output.saved",
+            output_file=output_file,
+            provider=self.provider.provider_name,
+        )
         return TranslationResult(
             translated_content=translated_message,
             bilingual_ast=ast,
@@ -376,19 +426,21 @@ class Translator:
             zero_based_end_exclusive = min(len(selected_docs), end_index)
             selected_docs = selected_docs[zero_based_start:zero_based_end_exclusive]
 
-            self.logger.info(
-                "[epub] Doc range selection start=%s end=%s selected=%s",
-                start_index,
-                end_index,
-                len(selected_docs),
+            self._log_event(
+                logging.INFO,
+                "translation.epub.selection.range",
+                start_doc=start_index,
+                end_doc=end_index,
+                doc_total=len(selected_docs),
             )
 
         if limit_docs is not None:
             selected_docs = selected_docs[: max(0, limit_docs)]
-            self.logger.info(
-                "[epub] Limit selection limit_docs=%s selected=%s",
-                limit_docs,
-                len(selected_docs),
+            self._log_event(
+                logging.INFO,
+                "translation.epub.selection.limit",
+                limit_docs=limit_docs,
+                doc_total=len(selected_docs),
             )
 
         return selected_docs

@@ -7,6 +7,7 @@ Implements BaseTranslator for Azure AI Foundry inference endpoints.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict, Any
 
 from lexora.core.base_translator import (
@@ -50,6 +51,7 @@ class AzureAIFoundryProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None
+        self._logger = logging.getLogger("lexora.providers.azure_ai_foundry")
 
     @property
     def provider_name(self) -> str:
@@ -140,9 +142,11 @@ class AzureAIFoundryProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(
-                        f"[azure_ai_foundry] model={self._model} chars={len(text)} "
-                        f"attempt={attempt + 1}"
+                    self._logger.debug(
+                        "provider.request.started provider=azure_ai_foundry model=%s chars=%s attempt=%s",
+                        self._model,
+                        len(text),
+                        attempt + 1,
                     )
 
                 t0 = time.time()
@@ -159,26 +163,38 @@ class AzureAIFoundryProvider(BaseTranslator):
                 self._accumulate_usage(response, total_tokens)
 
                 if self._debug:
-                    print(
-                        f"[azure_ai_foundry] {len(translated)} chars "
-                        f"in {time.time() - t0:.2f}s"
+                    self._logger.debug(
+                        "provider.request.completed provider=azure_ai_foundry model=%s chars=%s elapsed_ms=%s",
+                        self._model,
+                        len(translated),
+                        round((time.time() - t0) * 1000),
                     )
 
                 return translated or text
 
             except Exception as e:
                 if self._debug:
-                    print(f"[azure_ai_foundry] error: {type(e).__name__}: {e}")
+                    self._logger.exception(
+                        "provider.request.failed provider=azure_ai_foundry model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
 
                 error_str = str(e).lower()
                 if "content" in error_str and ("filter" in error_str or "safety" in error_str):
                     if self._debug:
-                        print("[azure_ai_foundry] Content filter triggered, returning original")
+                        self._logger.warning(
+                            "provider.request.blocked provider=azure_ai_foundry model=%s reason=content_filter",
+                            self._model,
+                        )
                     return text
                     
                 if "resource not found" in error_str or "404" in error_str:
                     if self._debug:
-                        print("[azure_ai_foundry] Hint: If using Managed Compute, try appending '/v1' to AZURE_AI_FOUNDRY_ENDPOINT. If using Serverless API, try appending '/models'.")
+                        self._logger.warning(
+                            "provider.request.endpoint_hint provider=azure_ai_foundry endpoint=%s hint=append_/v1_or_/models",
+                            self._endpoint,
+                        )
                     if attempt == retry - 1:
                         raise ValueError(f"Azure AI Foundry resource not found at {self._endpoint}. Check your endpoint URL (may need /v1 or /models appended). Error: {e}")
 
