@@ -148,7 +148,7 @@ class OpenAIProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "model=%s chars=%s attempt=%s",
+                        "provider.request.started provider=openai model=%s chars=%s attempt=%s",
                         self._model,
                         len(text),
                         attempt + 1,
@@ -173,16 +173,21 @@ class OpenAIProvider(BaseTranslator):
                 
                 if self._debug:
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f",
+                        "provider.request.completed provider=openai model=%s chars=%s elapsed_ms=%s",
+                        self._model,
                         len(translated),
-                        time.time() - t0,
+                        round((time.time() - t0) * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=openai model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
                 time.sleep(sleep * (attempt + 1))
                 if attempt == retry - 1:
                     raise

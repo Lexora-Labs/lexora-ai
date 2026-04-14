@@ -215,7 +215,7 @@ class AzureOpenAIProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "deployment=%s chars=%s attempt=%s",
+                        "provider.request.started provider=azure_openai deployment=%s chars=%s attempt=%s",
                         self._deployment,
                         len(text),
                         attempt + 1,
@@ -243,23 +243,30 @@ class AzureOpenAIProvider(BaseTranslator):
                 if self._debug:
                     dt = time.time() - t0
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f preview=%s",
+                        "provider.request.completed provider=azure_openai deployment=%s chars=%s elapsed_ms=%s",
+                        self._deployment,
                         len(translated),
-                        dt,
-                        translated[:160].replace("\n", " "),
+                        round(dt * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=azure_openai deployment=%s error_type=%s",
+                        self._deployment,
+                        type(e).__name__,
+                    )
                 
                 # Handle content filter errors gracefully
                 error_str = str(e)
                 if "content_filter" in error_str or "ResponsibleAIPolicyViolation" in error_str:
                     if self._debug:
-                        self._logger.warning("content filter triggered; returning original text")
+                        self._logger.warning(
+                            "provider.request.blocked provider=azure_openai deployment=%s reason=content_filter",
+                            self._deployment,
+                        )
                     return text
                 
                 # Exponential backoff

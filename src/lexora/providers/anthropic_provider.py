@@ -151,7 +151,7 @@ class AnthropicProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "model=%s chars=%s attempt=%s",
+                        "provider.request.started provider=anthropic model=%s chars=%s attempt=%s",
                         self._model,
                         len(text),
                         attempt + 1,
@@ -185,21 +185,29 @@ class AnthropicProvider(BaseTranslator):
                 
                 if self._debug:
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f",
+                        "provider.request.completed provider=anthropic model=%s chars=%s elapsed_ms=%s",
+                        self._model,
                         len(translated),
-                        time.time() - t0,
+                        round((time.time() - t0) * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=anthropic model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
                 
                 # Handle content blocks
                 if "content" in str(e).lower() and "block" in str(e).lower():
                     if self._debug:
-                        self._logger.warning("content blocked; returning original text")
+                        self._logger.warning(
+                            "provider.request.blocked provider=anthropic model=%s reason=content_block",
+                            self._model,
+                        )
                     return text
                 
                 time.sleep(sleep * (attempt + 1))

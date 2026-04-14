@@ -143,7 +143,7 @@ class AzureAIFoundryProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "model=%s chars=%s attempt=%s",
+                        "provider.request.started provider=azure_ai_foundry model=%s chars=%s attempt=%s",
                         self._model,
                         len(text),
                         attempt + 1,
@@ -164,27 +164,36 @@ class AzureAIFoundryProvider(BaseTranslator):
 
                 if self._debug:
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f",
+                        "provider.request.completed provider=azure_ai_foundry model=%s chars=%s elapsed_ms=%s",
+                        self._model,
                         len(translated),
-                        time.time() - t0,
+                        round((time.time() - t0) * 1000),
                     )
 
                 return translated or text
 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=azure_ai_foundry model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
 
                 error_str = str(e).lower()
                 if "content" in error_str and ("filter" in error_str or "safety" in error_str):
                     if self._debug:
-                        self._logger.warning("content filter triggered; returning original text")
+                        self._logger.warning(
+                            "provider.request.blocked provider=azure_ai_foundry model=%s reason=content_filter",
+                            self._model,
+                        )
                     return text
                     
                 if "resource not found" in error_str or "404" in error_str:
                     if self._debug:
                         self._logger.warning(
-                            "resource not found. Hint: managed compute may need '/v1'; serverless may need '/models'."
+                            "provider.request.endpoint_hint provider=azure_ai_foundry endpoint=%s hint=append_/v1_or_/models",
+                            self._endpoint,
                         )
                     if attempt == retry - 1:
                         raise ValueError(f"Azure AI Foundry resource not found at {self._endpoint}. Check your endpoint URL (may need /v1 or /models appended). Error: {e}")

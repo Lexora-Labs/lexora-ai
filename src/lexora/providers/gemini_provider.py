@@ -152,7 +152,7 @@ class GeminiProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "model=%s chars=%s attempt=%s",
+                        "provider.request.started provider=gemini model=%s chars=%s attempt=%s",
                         self._model_name,
                         len(text),
                         attempt + 1,
@@ -191,21 +191,29 @@ class GeminiProvider(BaseTranslator):
                 
                 if self._debug:
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f",
+                        "provider.request.completed provider=gemini model=%s chars=%s elapsed_ms=%s",
+                        self._model_name,
                         len(translated),
-                        time.time() - t0,
+                        round((time.time() - t0) * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=gemini model=%s error_type=%s",
+                        self._model_name,
+                        type(e).__name__,
+                    )
                 
                 # Handle safety blocks
                 if "blocked" in str(e).lower() or "safety" in str(e).lower():
                     if self._debug:
-                        self._logger.warning("safety filter triggered; returning original text")
+                        self._logger.warning(
+                            "provider.request.blocked provider=gemini model=%s reason=safety_filter",
+                            self._model_name,
+                        )
                     return text
                 
                 time.sleep(sleep * (attempt + 1))

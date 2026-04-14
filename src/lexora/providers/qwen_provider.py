@@ -161,7 +161,7 @@ class QwenProvider(BaseTranslator):
             try:
                 if self._debug:
                     self._logger.debug(
-                        "model=%s chars=%s attempt=%s",
+                        "provider.request.started provider=qwen model=%s chars=%s attempt=%s",
                         self._model,
                         len(text),
                         attempt + 1,
@@ -186,22 +186,30 @@ class QwenProvider(BaseTranslator):
                 
                 if self._debug:
                     self._logger.debug(
-                        "translated_chars=%s elapsed_s=%.2f",
+                        "provider.request.completed provider=qwen model=%s chars=%s elapsed_ms=%s",
+                        self._model,
                         len(translated),
-                        time.time() - t0,
+                        round((time.time() - t0) * 1000),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    self._logger.warning("error=%s: %s", type(e).__name__, e)
+                    self._logger.exception(
+                        "provider.request.failed provider=qwen model=%s error_type=%s",
+                        self._model,
+                        type(e).__name__,
+                    )
                 
                 # Handle content safety
                 error_str = str(e).lower()
                 if "content" in error_str and ("filter" in error_str or "safety" in error_str):
                     if self._debug:
-                        self._logger.warning("content filter triggered; returning original text")
+                        self._logger.warning(
+                            "provider.request.blocked provider=qwen model=%s reason=content_filter",
+                            self._model,
+                        )
                     return text
                 
                 time.sleep(sleep * (attempt + 1))
