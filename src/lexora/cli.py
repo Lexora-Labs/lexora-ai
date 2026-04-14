@@ -5,12 +5,17 @@ import hashlib
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 from .logging_framework import build_logging_config, configure_logging
 from .translator import Translator
-from .providers import create_provider, iter_available_provider_names
+from .providers import (
+    canonical_provider_name,
+    create_provider,
+    iter_available_provider_names,
+)
 
 
 DEFAULT_GLOBAL_CACHE_PATH = ".lexora/cache/global_translation_cache.jsonl"
@@ -73,6 +78,13 @@ def _clear_cache_file(path: str | None) -> str:
     return f"Cleared cache file: {path}"
 
 
+def _write_run_report(report_path: str, payload: dict) -> None:
+    """Write a machine-readable CLI run report."""
+    output = Path(report_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def main():
     """Main CLI entry point."""
     # Load environment variables from .env file if it exists
@@ -130,6 +142,20 @@ Supported AI providers:
         '--service',
         choices=list(iter_available_provider_names()),
         help='Translation provider to use (auto-detect if not specified)'
+    )
+    translate_parser.add_argument(
+        '--require-service',
+        action='store_true',
+        help='Fail unless --service is explicitly provided',
+    )
+    translate_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Validate configuration and inputs without executing translation',
+    )
+    translate_parser.add_argument(
+        '--report-path',
+        help='Optional JSON path to write a machine-readable run report',
     )
     translate_parser.add_argument(
         '--mode',
@@ -202,18 +228,45 @@ Supported AI providers:
         type=int,
         help='1-based end index (inclusive) of EPUB document range to translate',
     )
+    translate_parser.add_argument(
+        '--chunk-size',
+        type=int,
+        default=1200,
+        help='Max chunk size for sentence-aware chunking (default: 1200)',
+    )
+    translate_parser.add_argument(
+        '--chunk-context-window',
+        type=int,
+        default=0,
+        help='Neighbor chunk window size for context-aware translation (default: 0)',
+    )
 
     args = parser.parse_args()
 
     if args.command == 'translate':
+        started_at = time.perf_counter()
+        status = "failed"
+        report_payload: dict = {
+            "command": "translate",
+            "input_file": args.input,
+            "output_file": args.output,
+            "target_language": args.target,
+            "source_language": args.source,
+            "mode": args.mode,
+            "cache_scope": args.cache_scope,
+            "dry_run": bool(args.dry_run),
+        }
         try:
+            if args.require_service and not args.service:
+                raise ValueError("--require-service requires explicit --service")
+
             logging_config = build_logging_config(
                 level=args.log_level,
                 targets=args.log_targets,
                 log_file_path=args.log_file_path,
                 file_max_bytes=args.log_file_max_bytes,
                 file_backup_count=args.log_file_backup_count,
-                provider=args.service or "auto",
+                provider=canonical_provider_name(args.service or "auto"),
             )
             logger = configure_logging(logging_config).getChild("cli")
 
@@ -228,13 +281,17 @@ Supported AI providers:
 
             # Create translator
             translator = Translator(provider=provider)
+            selected_provider = canonical_provider_name(translator.provider.provider_name)
+            report_payload["provider"] = selected_provider
             glossary = _load_glossary(args.glossary)
+            report_payload["glossary_terms"] = len(glossary)
             cache_path = _resolve_cache_path(
                 input_file=args.input,
                 cache_scope=args.cache_scope,
                 cache_path=args.cache_path,
                 no_cache=args.no_cache,
             )
+            report_payload["cache_path"] = cache_path
 
             if args.clear_cache:
                 logger.info(_clear_cache_file(cache_path))
@@ -247,9 +304,34 @@ Supported AI providers:
                 raise ValueError("--end-doc must be >= 1")
             if args.start_doc is not None and args.end_doc is not None and args.start_doc > args.end_doc:
                 raise ValueError("--start-doc cannot be greater than --end-doc")
+            if args.chunk_size < 200:
+                raise ValueError("--chunk-size must be >= 200")
+            if args.chunk_context_window < 0:
+                raise ValueError("--chunk-context-window must be >= 0")
+
+            input_path = Path(args.input)
+            if not input_path.exists():
+                raise FileNotFoundError(f"Input file not found: {args.input}")
+            translator._get_reader(args.input)
+
+            if args.dry_run:
+                status = "dry-run"
+                elapsed = time.perf_counter() - started_at
+                report_payload.update(
+                    {
+                        "status": status,
+                        "elapsed_ms": int(elapsed * 1000),
+                        "validated": True,
+                    }
+                )
+                logger.info("Dry-run validation succeeded for provider=%s input=%s", selected_provider, args.input)
+                if args.report_path:
+                    _write_run_report(args.report_path, report_payload)
+                logger.info("Dry-run completed successfully")
+                return
 
             # Translate the file
-            translator.translate_file(
+            result = translator.translate_file(
                 input_file=args.input,
                 output_file=args.output,
                 target_language=args.target,
@@ -260,11 +342,36 @@ Supported AI providers:
                 limit_docs=args.limit_docs,
                 start_doc=args.start_doc,
                 end_doc=args.end_doc,
+                chunk_size=args.chunk_size,
+                chunk_context_window=args.chunk_context_window,
             )
+            status = "success"
+            elapsed = time.perf_counter() - started_at
+            report_payload.update(
+                {
+                    "status": status,
+                    "elapsed_ms": int(elapsed * 1000),
+                    "token_usage": result.token_usage or {},
+                }
+            )
+            if result.bilingual_ast and result.bilingual_ast.metadata:
+                report_payload["translation_summary"] = result.bilingual_ast.metadata
 
             logger.info("Translation completed successfully")
+            if args.report_path:
+                _write_run_report(args.report_path, report_payload)
 
         except Exception as e:
+            elapsed = time.perf_counter() - started_at
+            report_payload.update(
+                {
+                    "status": status,
+                    "elapsed_ms": int(elapsed * 1000),
+                    "error": str(e),
+                }
+            )
+            if args.report_path:
+                _write_run_report(args.report_path, report_payload)
             logging.getLogger("lexora.cli").exception("Translation failed")
             print(f"Error: {str(e)}", file=sys.stderr)
             sys.exit(1)

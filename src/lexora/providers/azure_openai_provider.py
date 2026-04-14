@@ -8,6 +8,7 @@ Extracted and refactored from azure_epub_gpt_translator.py.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict, Any
 
 from openai import AzureOpenAI
@@ -60,10 +61,11 @@ class AzureOpenAIProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[AzureOpenAI] = None
+        self._logger = logging.getLogger("lexora.providers.azure_openai")
 
     @property
     def provider_name(self) -> str:
-        return "azure_openai"
+        return "azure-openai"
 
     def is_configured(self) -> bool:
         """Check if all required Azure credentials are set."""
@@ -212,10 +214,11 @@ class AzureOpenAIProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(
-                        f"[azure_openai] chat.completions.create "
-                        f"deployment={self._deployment} chars={len(text)} "
-                        f"attempt={attempt + 1}"
+                    self._logger.debug(
+                        "deployment=%s chars=%s attempt=%s",
+                        self._deployment,
+                        len(text),
+                        attempt + 1,
                     )
                 
                 t0 = time.time()
@@ -239,26 +242,24 @@ class AzureOpenAIProvider(BaseTranslator):
                 
                 if self._debug:
                     dt = time.time() - t0
-                    preview = translated[:160].replace("\n", " ")
-                    print(
-                        f"[azure_openai] response {len(translated)} chars "
-                        f"in {dt:.2f}s: {preview}..."
+                    self._logger.debug(
+                        "translated_chars=%s elapsed_s=%.2f preview=%s",
+                        len(translated),
+                        dt,
+                        translated[:160].replace("\n", " "),
                     )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[azure_openai] error: {type(e).__name__}: {e}")
+                    self._logger.warning("error=%s: %s", type(e).__name__, e)
                 
                 # Handle content filter errors gracefully
                 error_str = str(e)
                 if "content_filter" in error_str or "ResponsibleAIPolicyViolation" in error_str:
                     if self._debug:
-                        print(
-                            "[azure_openai] Content filter triggered, "
-                            "returning original text"
-                        )
+                        self._logger.warning("content filter triggered; returning original text")
                     return text
                 
                 # Exponential backoff

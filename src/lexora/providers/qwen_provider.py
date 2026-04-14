@@ -8,6 +8,7 @@ Uses DashScope API or OpenAI-compatible endpoint.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict
 
 from lexora.core.base_translator import (
@@ -72,6 +73,7 @@ class QwenProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None
+        self._logger = logging.getLogger("lexora.providers.qwen")
 
     @property
     def provider_name(self) -> str:
@@ -158,7 +160,12 @@ class QwenProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(f"[qwen] model={self._model} chars={len(text)} attempt={attempt + 1}")
+                    self._logger.debug(
+                        "model=%s chars=%s attempt=%s",
+                        self._model,
+                        len(text),
+                        attempt + 1,
+                    )
                 
                 t0 = time.time()
                 response = client.chat.completions.create(
@@ -178,19 +185,23 @@ class QwenProvider(BaseTranslator):
                     total_tokens["total_tokens"] += response.usage.total_tokens or 0
                 
                 if self._debug:
-                    print(f"[qwen] {len(translated)} chars in {time.time() - t0:.2f}s")
+                    self._logger.debug(
+                        "translated_chars=%s elapsed_s=%.2f",
+                        len(translated),
+                        time.time() - t0,
+                    )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[qwen] error: {type(e).__name__}: {e}")
+                    self._logger.warning("error=%s: %s", type(e).__name__, e)
                 
                 # Handle content safety
                 error_str = str(e).lower()
                 if "content" in error_str and ("filter" in error_str or "safety" in error_str):
                     if self._debug:
-                        print("[qwen] Content filter triggered, returning original")
+                        self._logger.warning("content filter triggered; returning original text")
                     return text
                 
                 time.sleep(sleep * (attempt + 1))

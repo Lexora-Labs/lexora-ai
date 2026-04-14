@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,6 +72,7 @@ class TranslationCache:
         self._map: Dict[str, str] = {}
         self._supported_schema_versions = SUPPORTED_CACHE_SCHEMA_VERSIONS
         self._supported_pipeline_versions = SUPPORTED_PIPELINE_VERSIONS
+        self._lock = threading.Lock()
         self._load_existing()
 
     def _load_existing(self) -> None:
@@ -110,20 +112,29 @@ class TranslationCache:
 
     def put(self, content: str, fingerprint: CacheFingerprint, translated_text: str) -> None:
         key = build_cache_key(content, fingerprint)
-        if key in self._map:
-            return
+        with self._lock:
+            if key in self._map:
+                return
 
-        record = {
+            record = {
+                "schema_version": CACHE_SCHEMA_VERSION,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "key": key,
+                "content_hash": _sha256(content),
+                "translated_text": translated_text,
+                "fingerprint": fingerprint.to_dict(),
+                "pipeline_version": fingerprint.pipeline_version,
+            }
+
+            with open(self.path, "a", encoding="utf-8") as cache_file:
+                cache_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+            self._map[key] = translated_text
+
+    def stats(self) -> Dict[str, int | str]:
+        """Return basic cache operational stats for run reporting."""
+        return {
+            "entries": len(self._map),
+            "path": str(self.path),
             "schema_version": CACHE_SCHEMA_VERSION,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "key": key,
-            "content_hash": _sha256(content),
-            "translated_text": translated_text,
-            "fingerprint": fingerprint.to_dict(),
-            "pipeline_version": fingerprint.pipeline_version,
         }
-
-        with open(self.path, "a", encoding="utf-8") as cache_file:
-            cache_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-        self._map[key] = translated_text

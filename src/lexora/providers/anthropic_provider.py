@@ -7,6 +7,7 @@ Implements BaseTranslator for Anthropic Claude models.
 import os
 import time
 import hashlib
+import logging
 from typing import List, Optional, Dict
 
 from lexora.core.base_translator import (
@@ -65,6 +66,7 @@ class AnthropicProvider(BaseTranslator):
         self._temperature = temperature
         self._debug = debug
         self._client = None
+        self._logger = logging.getLogger("lexora.providers.anthropic")
 
     @property
     def provider_name(self) -> str:
@@ -105,8 +107,9 @@ class AnthropicProvider(BaseTranslator):
         system_msg = self.get_system_instruction(config)
         
         total_tokens: Dict[str, int] = {
-            "input_tokens": 0,
-            "output_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
         
         for idx, text in enumerate(texts):
@@ -147,7 +150,12 @@ class AnthropicProvider(BaseTranslator):
         for attempt in range(retry):
             try:
                 if self._debug:
-                    print(f"[anthropic] model={self._model} chars={len(text)} attempt={attempt + 1}")
+                    self._logger.debug(
+                        "model=%s chars=%s attempt=%s",
+                        self._model,
+                        len(text),
+                        attempt + 1,
+                    )
                 
                 t0 = time.time()
                 response = client.messages.create(
@@ -169,22 +177,29 @@ class AnthropicProvider(BaseTranslator):
                 
                 # Track token usage
                 if response.usage:
-                    total_tokens["input_tokens"] += response.usage.input_tokens or 0
-                    total_tokens["output_tokens"] += response.usage.output_tokens or 0
+                    prompt = response.usage.input_tokens or 0
+                    completion = response.usage.output_tokens or 0
+                    total_tokens["prompt_tokens"] += prompt
+                    total_tokens["completion_tokens"] += completion
+                    total_tokens["total_tokens"] += prompt + completion
                 
                 if self._debug:
-                    print(f"[anthropic] {len(translated)} chars in {time.time() - t0:.2f}s")
+                    self._logger.debug(
+                        "translated_chars=%s elapsed_s=%.2f",
+                        len(translated),
+                        time.time() - t0,
+                    )
                 
                 return translated
                 
             except Exception as e:
                 if self._debug:
-                    print(f"[anthropic] error: {type(e).__name__}: {e}")
+                    self._logger.warning("error=%s: %s", type(e).__name__, e)
                 
                 # Handle content blocks
                 if "content" in str(e).lower() and "block" in str(e).lower():
                     if self._debug:
-                        print("[anthropic] Content blocked, returning original")
+                        self._logger.warning("content blocked; returning original text")
                     return text
                 
                 time.sleep(sleep * (attempt + 1))

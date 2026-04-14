@@ -185,6 +185,8 @@ print(translated)
 - [docs/vibe-context.md](docs/vibe-context.md): Core engineering context, guardrails, and architecture rules.
 - [docs/providers.md](docs/providers.md): Provider setup and configuration details.
 - [docs/translation-logic.md](docs/translation-logic.md): Canonical translation pipeline logic and EPUB flow.
+- [docs/track-a-cli-core-mvp-plan.md](docs/track-a-cli-core-mvp-plan.md): 2-week execution plan for translation-core and CLI-first hardening.
+- [docs/translation-run-contract.md](docs/translation-run-contract.md): Frozen run/report contract for CLI and future UI integration.
 - [docs/logging-framework.md](docs/logging-framework.md): Planned centralized logging architecture and sink model.
 - [docs/todo-list.md](docs/todo-list.md): Planned translation pipeline improvements.
 
