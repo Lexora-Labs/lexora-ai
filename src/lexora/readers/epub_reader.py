@@ -10,7 +10,7 @@ from html import unescape
 from typing import List, Tuple
 
 import ebooklib
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Comment, Doctype, ProcessingInstruction, Declaration
 from ebooklib import epub
 
 from .base_reader import FileReader
@@ -69,9 +69,14 @@ class EpubReader(FileReader):
         for text_node in soup.find_all(string=True):
             if not isinstance(text_node, NavigableString):
                 continue
+            if isinstance(text_node, (Comment, Doctype, ProcessingInstruction, Declaration)):
+                continue
             if not text_node.strip():
                 continue
             if self._is_in_skipped_context(text_node):
+                continue
+            parent_name = getattr(text_node.parent, "name", None)
+            if parent_name and parent_name.lower() in {"head", "title"}:
                 continue
             nodes.append(text_node)
 
