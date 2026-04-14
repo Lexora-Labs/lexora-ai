@@ -19,6 +19,7 @@ DEFAULT_UI_MIN_LEVEL = "INFO"
 
 _ui_buffer: Deque[Dict[str, object]] = deque()
 _ui_lock = Lock()
+_ui_next_event_id = 0
 
 
 class ContextFilter(logging.Filter):
@@ -45,8 +46,13 @@ class UILogBufferHandler(logging.Handler):
         self.max_events = max(1, max_events)
 
     def emit(self, record: logging.LogRecord) -> None:
+        global _ui_next_event_id
         try:
+            with _ui_lock:
+                _ui_next_event_id += 1
+                event_id = _ui_next_event_id
             payload = {
+                "id": event_id,
                 "timestamp": self.formatter.formatTime(record, self.formatter.datefmt)
                 if self.formatter
                 else None,
@@ -74,8 +80,16 @@ def get_ui_log_events() -> List[Dict[str, object]]:
 
 def clear_ui_log_events() -> None:
     """Clear in-memory UI log event buffer."""
+    global _ui_next_event_id
     with _ui_lock:
         _ui_buffer.clear()
+        _ui_next_event_id = 0
+
+
+def get_ui_log_events_since(last_event_id: int) -> List[Dict[str, object]]:
+    """Return buffered UI log events newer than the provided event id."""
+    with _ui_lock:
+        return [event for event in _ui_buffer if int(event.get("id", 0)) > last_event_id]
 
 
 def parse_log_targets(raw_targets: str | None) -> List[str]:
