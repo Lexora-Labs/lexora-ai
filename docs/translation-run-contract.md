@@ -20,6 +20,7 @@ Top-level fields:
 - `mode`
 - `cache_scope`
 - `dry_run`
+- `merge_max_chars` (optional EPUB merge batching; `null` when unset)
 - `provider` (canonical name)
 - `glossary_terms`
 - `cache_path`
@@ -44,6 +45,7 @@ Top-level fields:
 - `cache_entries_before`
 - `chunk_size`
 - `chunk_context_window`
+- `merge_max_chars` (optional; `null` when unset)
 - `elapsed_ms`
 
 ## Deterministic Guarantees

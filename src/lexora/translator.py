@@ -20,6 +20,12 @@ from .core import (
 )
 from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
+from .epub_segment_batch import (
+    MERGE_BATCH_SYSTEM_SUFFIX,
+    build_segmented_payload,
+    parse_segmented_response,
+    partition_for_merge,
+)
 
 
 class Translator:
@@ -93,6 +99,7 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
+        merge_max_chars: Optional[int] = None,
     ) -> TranslationResult:
         """
         Translate a file to the target language.
@@ -110,6 +117,9 @@ class Translator:
             end_doc: Optional 1-based end index (inclusive) of EPUB document selection
             chunk_size: Max chars for sentence-aware chunking (EPUB path)
             chunk_context_window: Number of neighbor chunks on each side for context
+            merge_max_chars: EPUB only: if set, merge multiple uncached chunks into one
+                provider request up to this budget (chars + marker overhead), using
+                segment markers. Ignored when chunk_context_window > 0.
         """
         # Check if input file exists
         input_path = Path(input_file)
@@ -132,6 +142,7 @@ class Translator:
                 end_doc=end_doc,
                 chunk_size=chunk_size,
                 chunk_context_window=chunk_context_window,
+                merge_max_chars=merge_max_chars,
             )
 
         # Read the file
@@ -195,6 +206,7 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
+        merge_max_chars: Optional[int] = None,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
         self._log_event(
@@ -311,6 +323,11 @@ class Translator:
 
             batch_results: List[TranslationResult] = []
             if uncached_texts:
+                use_merge = (
+                    merge_max_chars is not None
+                    and merge_max_chars > 0
+                    and chunk_context_window <= 0
+                )
                 self._log_event(
                     logging.INFO,
                     "translation.epub.provider_batch.started",
@@ -318,14 +335,23 @@ class Translator:
                     doc_total=len(docs),
                     provider=self.provider.provider_name,
                     chunks=len(uncached_texts),
+                    merge=use_merge,
                 )
-                batch_results = self._translate_uncached_chunks(
-                    chunked_texts=chunked_texts,
-                    uncached_indices=uncached_indices,
-                    uncached_texts=uncached_texts,
-                    config=config,
-                    context_window=chunk_context_window,
-                )
+                if use_merge:
+                    batch_results = self._translate_uncached_chunks_merged(
+                        uncached_indices=uncached_indices,
+                        uncached_texts=uncached_texts,
+                        config=config,
+                        merge_max_chars=merge_max_chars,
+                    )
+                else:
+                    batch_results = self._translate_uncached_chunks(
+                        chunked_texts=chunked_texts,
+                        uncached_indices=uncached_indices,
+                        uncached_texts=uncached_texts,
+                        config=config,
+                        context_window=chunk_context_window,
+                    )
 
             for result_index, chunk_index in enumerate(uncached_indices):
                 source_chunk = chunked_texts[chunk_index]
@@ -403,6 +429,7 @@ class Translator:
                 "cache_entries_before": cache_stats_before["entries"] if cache_stats_before else 0,
                 "chunk_size": chunk_size,
                 "chunk_context_window": chunk_context_window,
+                "merge_max_chars": merge_max_chars,
                 "elapsed_ms": int(total_elapsed * 1000),
             },
         )
@@ -436,6 +463,68 @@ class Translator:
             bilingual_ast=ast,
             token_usage=token_usage,
         )
+
+    _MERGE_BASE_SYSTEM = (
+        "You are a professional literary translator. "
+        "Translate faithfully, fluently, and maintain formatting where possible. "
+        "Do not add explanations or notes. Output only the translation.\n\n"
+    )
+
+    def _translate_uncached_chunks_merged(
+        self,
+        uncached_indices: List[int],
+        uncached_texts: List[str],
+        config: TranslationConfig,
+        merge_max_chars: int,
+    ) -> List[TranslationResult]:
+        """Translate uncached chunks in merged provider calls with segment markers."""
+        batches = partition_for_merge(uncached_indices, uncached_texts, merge_max_chars)
+        index_to_pos = {chunk_idx: pos for pos, chunk_idx in enumerate(uncached_indices)}
+        ordered: List[Optional[TranslationResult]] = [None] * len(uncached_indices)
+
+        for batch in batches:
+            chunk_indices = [pair[0] for pair in batch]
+            texts = [pair[1] for pair in batch]
+            payload = build_segmented_payload(texts)
+            suffix = MERGE_BATCH_SYSTEM_SUFFIX.format(n=len(texts))
+            batch_config = TranslationConfig(
+                source_language=config.source_language,
+                target_language=config.target_language,
+                mode=config.mode,
+                glossary=config.glossary,
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                custom_instruction=self._MERGE_BASE_SYSTEM + suffix,
+            )
+            try:
+                merged_result = self.provider.translate_text(payload, batch_config)
+                segs = parse_segmented_response(
+                    merged_result.translated_content or "", len(texts)
+                )
+            except (ValueError, Exception) as exc:
+                self._log_event(
+                    logging.WARNING,
+                    "translation.epub.merge_batch.failed",
+                    reason=str(exc),
+                    segments=len(texts),
+                )
+                fallback = self.provider.translate_batch(texts, config)
+                for j, cidx in enumerate(chunk_indices):
+                    ordered[index_to_pos[cidx]] = fallback[j]
+                continue
+
+            for j, cidx in enumerate(chunk_indices):
+                pos = index_to_pos[cidx]
+                token_part = merged_result.token_usage if j == 0 else {}
+                ordered[pos] = TranslationResult(
+                    translated_content=segs[j],
+                    bilingual_ast=None,
+                    token_usage=token_part,
+                )
+
+        if any(item is None for item in ordered):
+            raise RuntimeError("Internal error: incomplete merged EPUB translation results")
+        return ordered  # type: ignore[return-value]
 
     def _translate_uncached_chunks(
         self,

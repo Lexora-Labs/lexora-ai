@@ -48,6 +48,8 @@ class AzureAIFoundryProvider(BaseTranslator):
         endpoint_env = endpoint or os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
         self._endpoint = endpoint_env.rstrip("/") if endpoint_env else None
         self._model = model or os.getenv("AZURE_AI_FOUNDRY_MODEL")
+        self._api_version = os.getenv("AZURE_AI_FOUNDRY_API_VERSION", "2024-05-01-preview")
+        self._use_openai_v1_style = bool(self._endpoint and "/openai/v1" in self._endpoint)
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None
@@ -69,10 +71,14 @@ class AzureAIFoundryProvider(BaseTranslator):
                     "and AZURE_AI_FOUNDRY_MODEL environment variables."
                 )
 
-            self._client = OpenAI(
-                base_url=self._endpoint,
-                api_key=self._api_key,
-            )
+            client_kwargs: Dict[str, Any] = {
+                "base_url": self._endpoint,
+                "api_key": self._api_key,
+            }
+            # openai/v1 endpoints should be called without api-version query.
+            if not self._use_openai_v1_style:
+                client_kwargs["default_query"] = {"api-version": self._api_version}
+            self._client = OpenAI(**client_kwargs)
 
         return self._client
 
@@ -94,7 +100,6 @@ class AzureAIFoundryProvider(BaseTranslator):
         retry: int = 3,
         sleep: float = 1.0,
     ) -> List[TranslationResult]:
-        client = self._get_client()
         results: List[TranslationResult] = []
         system_msg = self.get_system_instruction(config)
 
@@ -105,10 +110,17 @@ class AzureAIFoundryProvider(BaseTranslator):
         }
 
         for idx, text in enumerate(texts):
+            client = self._get_client()
             prompt = self.build_prompt(text, config)
+            usage_before = dict(total_tokens)
             translated = self._call_api_with_retry(
                 client, system_msg, prompt, text, retry, sleep, total_tokens
             )
+            usage_delta = {
+                "prompt_tokens": max(0, total_tokens["prompt_tokens"] - usage_before["prompt_tokens"]),
+                "completion_tokens": max(0, total_tokens["completion_tokens"] - usage_before["completion_tokens"]),
+                "total_tokens": max(0, total_tokens["total_tokens"] - usage_before["total_tokens"]),
+            }
 
             node = BilingualNode(
                 node_id=self._generate_node_id(text, idx),
@@ -123,7 +135,7 @@ class AzureAIFoundryProvider(BaseTranslator):
                     target_language=config.target_language,
                     nodes=[node],
                 ),
-                token_usage=dict(total_tokens),
+                token_usage=usage_delta,
             )
             results.append(result)
 
@@ -139,6 +151,7 @@ class AzureAIFoundryProvider(BaseTranslator):
         sleep: float,
         total_tokens: Dict[str, int],
     ) -> str:
+        last_error: Optional[Exception] = None
         for attempt in range(retry):
             try:
                 if self._debug:
@@ -173,6 +186,7 @@ class AzureAIFoundryProvider(BaseTranslator):
                 return translated or text
 
             except Exception as e:
+                last_error = e
                 if self._debug:
                     self._logger.exception(
                         "provider.request.failed provider=azure_ai_foundry model=%s error_type=%s",
@@ -197,12 +211,15 @@ class AzureAIFoundryProvider(BaseTranslator):
                         )
                     if attempt == retry - 1:
                         raise ValueError(f"Azure AI Foundry resource not found at {self._endpoint}. Check your endpoint URL (may need /v1 or /models appended). Error: {e}")
+                if "api version not supported" in error_str:
+                    raise
 
                 time.sleep(sleep * (attempt + 1))
                 if attempt == retry - 1:
                     raise
-
-        return text
+        raise RuntimeError(
+            f"Azure AI Foundry translation request failed after retries at endpoint {self._endpoint}: {last_error}"
+        )
 
     def _extract_text(self, response: Any) -> str:
         choice = response.choices[0]

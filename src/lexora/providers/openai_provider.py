@@ -111,16 +111,22 @@ class OpenAIProvider(BaseTranslator):
         
         for idx, text in enumerate(texts):
             prompt = self.build_prompt(text, config)
+            usage_before = dict(total_tokens)
             translated = self._call_api_with_retry(
                 client, system_msg, prompt, text, retry, sleep, total_tokens
             )
-            
+            usage_delta = {
+                "prompt_tokens": max(0, total_tokens["prompt_tokens"] - usage_before["prompt_tokens"]),
+                "completion_tokens": max(0, total_tokens["completion_tokens"] - usage_before["completion_tokens"]),
+                "total_tokens": max(0, total_tokens["total_tokens"] - usage_before["total_tokens"]),
+            }
+
             node = BilingualNode(
                 node_id=self._generate_node_id(text, idx),
                 source_text=text,
                 translated_text=translated,
             )
-            
+
             result = TranslationResult(
                 translated_content=translated,
                 bilingual_ast=BilingualAST(
@@ -128,7 +134,7 @@ class OpenAIProvider(BaseTranslator):
                     target_language=config.target_language,
                     nodes=[node],
                 ),
-                token_usage=dict(total_tokens),
+                token_usage=usage_delta,
             )
             results.append(result)
         
