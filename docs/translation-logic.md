@@ -27,7 +27,9 @@ This document describes the current canonical translation logic in `lexora-ai`.
 2. Parse each XHTML document with BeautifulSoup (`lxml-xml`).
 3. Collect translatable text nodes only (skip `script`, `style`, `code`, `pre`).
 4. Apply sentence-aware safe chunking for long node text.
-5. Translate chunks through `provider.translate_batch(...)`.
+5. Translate **uncached** segments:
+   - **Default:** one provider batch call per chunk (`translate_batch`), preserving order.
+   - **Optional merge (`--merge-max-chars`):** pack multiple segments into one user message with numbered markers (`⟦LX:…⟧` … `⟦/LX:…⟧`) so the model returns the same structure; parser maps back to original node/chunk indices. If parsing fails, the pipeline falls back to per-chunk `translate_batch`. Merge is used only when `--chunk-context-window` is `0` (neighbor-context mode and merge are mutually exclusive in the translator).
 6. Reassemble translated chunks back to the original node order.
 7. Replace DOM text nodes and repack EPUB.
 
@@ -80,6 +82,7 @@ To reduce repeated translation cost and speed up reruns, the pipeline uses a res
 - `--report-path`: write machine-readable JSON run report.
 - `--chunk-size`: control sentence-aware chunk sizing.
 - `--chunk-context-window`: include neighbor chunks as context (target-only output).
+- `--merge-max-chars` (optional): for EPUB, approximate max characters of **source text** (plus marker overhead) to pack into a single translation request for uncached segments, reducing API round-trips and prompt overhead. Minimum `800` when set. Report JSON includes `merge_max_chars` (null when unset).
 
 ## Runtime Contract
 

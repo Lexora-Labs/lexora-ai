@@ -240,6 +240,16 @@ Supported AI providers:
         default=0,
         help='Neighbor chunk window size for context-aware translation (default: 0)',
     )
+    translate_parser.add_argument(
+        '--merge-max-chars',
+        type=int,
+        default=None,
+        help=(
+            'EPUB only: merge multiple uncached chunks into fewer provider requests, '
+            'up to this character budget (includes segment marker overhead). '
+            'Ignored when --chunk-context-window is greater than 0.'
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -255,6 +265,7 @@ Supported AI providers:
             "mode": args.mode,
             "cache_scope": args.cache_scope,
             "dry_run": bool(args.dry_run),
+            "merge_max_chars": args.merge_max_chars,
         }
         try:
             if args.require_service and not args.service:
@@ -308,6 +319,12 @@ Supported AI providers:
                 raise ValueError("--chunk-size must be >= 200")
             if args.chunk_context_window < 0:
                 raise ValueError("--chunk-context-window must be >= 0")
+            if args.merge_max_chars is not None and args.merge_max_chars < 800:
+                raise ValueError("--merge-max-chars must be >= 800 when set")
+            if args.merge_max_chars and args.chunk_context_window > 0:
+                logger.warning(
+                    "--merge-max-chars is ignored when --chunk-context-window > 0"
+                )
 
             input_path = Path(args.input)
             if not input_path.exists():
@@ -344,6 +361,7 @@ Supported AI providers:
                 end_doc=args.end_doc,
                 chunk_size=args.chunk_size,
                 chunk_context_window=args.chunk_context_window,
+                merge_max_chars=args.merge_max_chars,
             )
             status = "success"
             elapsed = time.perf_counter() - started_at

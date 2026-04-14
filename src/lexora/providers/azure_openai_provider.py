@@ -165,6 +165,7 @@ class AzureOpenAIProvider(BaseTranslator):
         
         for idx, text in enumerate(texts):
             prompt = self.build_prompt(text, config)
+            usage_before = dict(total_tokens)
             translated = self._call_api_with_retry(
                 client=client,
                 system_msg=system_msg,
@@ -174,10 +175,15 @@ class AzureOpenAIProvider(BaseTranslator):
                 sleep=sleep,
                 total_tokens=total_tokens,
             )
-            
+            usage_delta = {
+                "prompt_tokens": max(0, total_tokens["prompt_tokens"] - usage_before["prompt_tokens"]),
+                "completion_tokens": max(0, total_tokens["completion_tokens"] - usage_before["completion_tokens"]),
+                "total_tokens": max(0, total_tokens["total_tokens"] - usage_before["total_tokens"]),
+            }
+
             # Generate node ID
             node_id = self._generate_node_id(text, idx)
-            
+
             # Create bilingual node
             node = BilingualNode(
                 node_id=node_id,
@@ -185,7 +191,7 @@ class AzureOpenAIProvider(BaseTranslator):
                 translated_text=translated,
             )
             ast.nodes.append(node)
-            
+
             # Create individual result
             result = TranslationResult(
                 translated_content=translated,
@@ -194,7 +200,7 @@ class AzureOpenAIProvider(BaseTranslator):
                     target_language=config.target_language,
                     nodes=[node],
                 ),
-                token_usage=dict(total_tokens),
+                token_usage=usage_delta,
             )
             results.append(result)
         
