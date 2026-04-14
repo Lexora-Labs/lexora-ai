@@ -65,7 +65,7 @@ class AzureOpenAIProvider(BaseTranslator):
 
     @property
     def provider_name(self) -> str:
-        return "azure_openai"
+        return "azure-openai"
 
     def is_configured(self) -> bool:
         """Check if all required Azure credentials are set."""

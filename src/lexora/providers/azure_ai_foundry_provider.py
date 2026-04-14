@@ -55,7 +55,7 @@ class AzureAIFoundryProvider(BaseTranslator):
 
     @property
     def provider_name(self) -> str:
-        return "azure_ai_foundry"
+        return "azure-foundry"
 
     def is_configured(self) -> bool:
         return bool(self._api_key and self._endpoint and self._model)

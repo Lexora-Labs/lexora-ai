@@ -18,7 +18,7 @@ from .core import (
     TranslationCache,
     hash_glossary,
 )
-from .providers import get_default_provider
+from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
 
 
@@ -91,6 +91,8 @@ class Translator:
         limit_docs: Optional[int] = None,
         start_doc: Optional[int] = None,
         end_doc: Optional[int] = None,
+        chunk_size: int = 1200,
+        chunk_context_window: int = 0,
     ) -> TranslationResult:
         """
         Translate a file to the target language.
@@ -106,6 +108,8 @@ class Translator:
             limit_docs: Optional number of EPUB documents to translate from selection start
             start_doc: Optional 1-based start index of EPUB document selection
             end_doc: Optional 1-based end index (inclusive) of EPUB document selection
+            chunk_size: Max chars for sentence-aware chunking (EPUB path)
+            chunk_context_window: Number of neighbor chunks on each side for context
         """
         # Check if input file exists
         input_path = Path(input_file)
@@ -126,6 +130,8 @@ class Translator:
                 limit_docs=limit_docs,
                 start_doc=start_doc,
                 end_doc=end_doc,
+                chunk_size=chunk_size,
+                chunk_context_window=chunk_context_window,
             )
 
         # Read the file
@@ -187,6 +193,8 @@ class Translator:
         limit_docs: Optional[int] = None,
         start_doc: Optional[int] = None,
         end_doc: Optional[int] = None,
+        chunk_size: int = 1200,
+        chunk_context_window: int = 0,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
         self._log_event(
@@ -220,6 +228,7 @@ class Translator:
         }
 
         cache = TranslationCache(cache_path) if cache_path else None
+        cache_stats_before = cache.stats() if cache else None
         cache_fingerprint = self._build_cache_fingerprint(config)
         started_at = time.perf_counter()
 
@@ -269,7 +278,10 @@ class Translator:
             chunked_texts: List[str] = []
             node_chunk_ranges: List[tuple[int, int]] = []
             for source_text in source_texts:
-                node_chunks = self._chunk_text_sentence_aware(source_text)
+                node_chunks = self._chunk_text_sentence_aware(
+                    source_text,
+                    max_chars=chunk_size,
+                )
                 start = len(chunked_texts)
                 chunked_texts.extend(node_chunks)
                 end = len(chunked_texts)
@@ -307,7 +319,13 @@ class Translator:
                     provider=self.provider.provider_name,
                     chunks=len(uncached_texts),
                 )
-                batch_results = self.provider.translate_batch(uncached_texts, config)
+                batch_results = self._translate_uncached_chunks(
+                    chunked_texts=chunked_texts,
+                    uncached_indices=uncached_indices,
+                    uncached_texts=uncached_texts,
+                    config=config,
+                    context_window=chunk_context_window,
+                )
 
             for result_index, chunk_index in enumerate(uncached_indices):
                 source_chunk = chunked_texts[chunk_index]
@@ -364,22 +382,34 @@ class Translator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         epub.write_epub(output_file, book)
 
+        total_elapsed = time.perf_counter() - started_at
+        cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
+
         ast = BilingualAST(
             source_language=source_language or "",
             target_language=target_language,
             nodes=bilingual_nodes,
             metadata={
-                "provider": self.provider.provider_name,
+                "provider": canonical_provider_name(self.provider.provider_name),
                 "input_file": input_file,
                 "output_file": output_file,
+                "docs_total": len(docs),
+                "docs_translated": translated_docs,
+                "nodes_total": total_nodes,
+                "chunks_total": total_chunks,
+                "cache_hits": total_cache_hits,
+                "cache_misses": total_cache_misses,
+                "cache_hit_rate": round(cache_rate, 2),
+                "cache_entries_before": cache_stats_before["entries"] if cache_stats_before else 0,
+                "chunk_size": chunk_size,
+                "chunk_context_window": chunk_context_window,
+                "elapsed_ms": int(total_elapsed * 1000),
             },
         )
 
         translated_message = (
             f"EPUB translated with {self.provider.provider_name} and saved to {output_file}"
         )
-        total_elapsed = time.perf_counter() - started_at
-        cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
         self._log_event(
             logging.INFO,
             "translation.epub.completed",
@@ -406,6 +436,73 @@ class Translator:
             bilingual_ast=ast,
             token_usage=token_usage,
         )
+
+    def _translate_uncached_chunks(
+        self,
+        chunked_texts: List[str],
+        uncached_indices: List[int],
+        uncached_texts: List[str],
+        config: TranslationConfig,
+        context_window: int,
+    ) -> List[TranslationResult]:
+        """Translate uncached chunks with optional neighbor context windows."""
+        if context_window <= 0:
+            return self.provider.translate_batch(uncached_texts, config)
+
+        results: List[TranslationResult] = []
+        for index, chunk_index in enumerate(uncached_indices):
+            source_chunk = chunked_texts[chunk_index]
+            left = max(0, chunk_index - context_window)
+            right = min(len(chunked_texts), chunk_index + context_window + 1)
+            neighbors = chunked_texts[left:right]
+
+            contextual_text = "\n".join(
+                [
+                    "CONTEXT_NEIGHBORS_START",
+                    *neighbors,
+                    "CONTEXT_NEIGHBORS_END",
+                    "TARGET_CHUNK_START",
+                    source_chunk,
+                    "TARGET_CHUNK_END",
+                ]
+            )
+            contextual_instruction = (
+                "Translate only the text between TARGET_CHUNK_START and TARGET_CHUNK_END. "
+                "Use neighbor context for coherence but output only the translated target chunk. "
+                "Do not include labels or any extra commentary."
+            )
+            contextual_config = TranslationConfig(
+                source_language=config.source_language,
+                target_language=config.target_language,
+                mode=config.mode,
+                glossary=config.glossary,
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                custom_instruction=contextual_instruction,
+            )
+            result = self.provider.translate_text(contextual_text, contextual_config)
+            translated = (result.translated_content or "").strip()
+            if not translated:
+                translated = source_chunk
+            # Normalize to target-only output if provider echoed delimiters.
+            if "TARGET_CHUNK_START" in translated and "TARGET_CHUNK_END" in translated:
+                translated = translated.split("TARGET_CHUNK_START", 1)[1]
+                translated = translated.split("TARGET_CHUNK_END", 1)[0].strip()
+            results.append(
+                TranslationResult(
+                    translated_content=translated,
+                    bilingual_ast=result.bilingual_ast,
+                    token_usage=result.token_usage,
+                    cost_estimate=result.cost_estimate,
+                )
+            )
+            if (index + 1) % 50 == 0:
+                self.logger.debug(
+                    "[epub] Context chunk progress %s/%s",
+                    index + 1,
+                    len(uncached_indices),
+                )
+        return results
 
     def _select_epub_docs(
         self,

@@ -107,8 +107,9 @@ class AnthropicProvider(BaseTranslator):
         system_msg = self.get_system_instruction(config)
         
         total_tokens: Dict[str, int] = {
-            "input_tokens": 0,
-            "output_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
         }
         
         for idx, text in enumerate(texts):
@@ -176,8 +177,11 @@ class AnthropicProvider(BaseTranslator):
                 
                 # Track token usage
                 if response.usage:
-                    total_tokens["input_tokens"] += response.usage.input_tokens or 0
-                    total_tokens["output_tokens"] += response.usage.output_tokens or 0
+                    prompt = response.usage.input_tokens or 0
+                    completion = response.usage.output_tokens or 0
+                    total_tokens["prompt_tokens"] += prompt
+                    total_tokens["completion_tokens"] += completion
+                    total_tokens["total_tokens"] += prompt + completion
                 
                 if self._debug:
                     self._logger.debug(

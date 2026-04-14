@@ -8,6 +8,11 @@ This document describes the current canonical translation logic in `lexora-ai`.
 - Keep one canonical provider-based pipeline for CLI, UI, and Python API.
 - Stay stateless in the core pipeline.
 
+## Canonical Runtime Entry
+
+- Supported CLI/runtime path: `lexora translate ...` -> `src/lexora/cli.py` -> `Translator`.
+- Legacy script path `translate.py` is deprecated and intentionally redirects to the canonical CLI command.
+
 ## Canonical Flow
 
 1. Input file is routed to a reader by file type.
@@ -67,6 +72,18 @@ To reduce repeated translation cost and speed up reruns, the pipeline uses a res
 ## Planned Improvement (Deferred)
 
 - Add neighbor-window context per chunk so each translation call includes adjacent chunk context while only the target chunk is emitted as output.
+
+## CLI Production Controls (Current)
+
+- `--require-service`: fail unless provider is explicitly selected.
+- `--dry-run`: validate input/provider/args without running translation.
+- `--report-path`: write machine-readable JSON run report.
+- `--chunk-size`: control sentence-aware chunk sizing.
+- `--chunk-context-window`: include neighbor chunks as context (target-only output).
+
+## Runtime Contract
+
+- Canonical run/report contract is defined in `docs/translation-run-contract.md`.
 
 ## Mode and Glossary
 
