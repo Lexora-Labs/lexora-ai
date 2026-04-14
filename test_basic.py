@@ -531,6 +531,48 @@ def test_structured_event_record_fields():
         return False
 
 
+def test_ui_sink_incremental_fetch():
+    """Test incremental UI sink reads by event id cursor."""
+    print("\nTesting incremental UI sink fetch...")
+
+    try:
+        import logging
+        from lexora.logging_framework import (
+            build_logging_config,
+            clear_ui_log_events,
+            configure_logging,
+            get_ui_log_events_since,
+        )
+
+        clear_ui_log_events()
+        config = build_logging_config(level="INFO", targets="ui")
+        logger = configure_logging(config).getChild("test.incremental")
+
+        logger.info("first event")
+        first_batch = get_ui_log_events_since(0)
+        assert len(first_batch) == 1, "Expected first incremental fetch to return one event"
+        first_id = int(first_batch[0]["id"])
+
+        logger.info("second event")
+        second_batch = get_ui_log_events_since(first_id)
+        assert len(second_batch) == 1, "Expected second incremental fetch to return one new event"
+        assert "second event" in second_batch[0]["message"]
+
+        root_logger = logging.getLogger()
+        for handler in list(root_logger.handlers):
+            handler.close()
+            root_logger.removeHandler(handler)
+        root_logger.filters.clear()
+
+        print("✓ Incremental UI sink fetch works")
+        return True
+    except Exception as e:
+        print(f"\n✗ Incremental UI sink fetch failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_rotating_file_sink_utf8_output():
     """Test file sink creates UTF-8 logs with date token filename pattern."""
     print("\nTesting rotating file sink UTF-8 output...")
@@ -789,6 +831,7 @@ def main():
     results.append(("Logging Target Parsing", test_logging_target_parsing_and_fallback()))
     results.append(("UI Sink Buffer/Level", test_ui_sink_buffer_and_min_level()))
     results.append(("Structured Event Capture", test_structured_event_record_fields()))
+    results.append(("UI Sink Incremental Fetch", test_ui_sink_incremental_fetch()))
     results.append(("Rotating File Sink", test_rotating_file_sink_utf8_output()))
     results.append(("Rotating File Sink DATETIME", test_rotating_file_sink_datetime_token()))
     results.append(("Logging Retention Overrides", test_logging_config_retention_overrides()))

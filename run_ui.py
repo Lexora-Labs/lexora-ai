@@ -13,6 +13,7 @@ import os
 import socket
 import base64
 import asyncio
+import logging
 from pathlib import Path
 import threading
 from typing import Optional
@@ -34,6 +35,12 @@ from lexora.ui.theme import (
 from lexora.ui.layout.main_layout import MainLayout
 from lexora.translator import Translator
 from lexora.providers import create_provider
+from lexora.logging_framework import (
+    build_logging_config,
+    clear_ui_log_events,
+    configure_logging,
+    get_ui_log_events_since,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -214,6 +221,8 @@ def create_translate_view(page: ft.Page) -> ft.Control:
     is_translating = {"value": False}
     active_job_id = {"value": 0}
     cancel_requested = {"value": False}
+    log_cursor = {"value": 0}
+    log_history: list[dict[str, object]] = []
     
     file_display = ft.Text("No file selected", size=14, color=Colors.TEXT_SECONDARY)
     
@@ -368,6 +377,38 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         border_radius=10,
         visible=False,
     )
+
+    log_level_filter = ft.Dropdown(
+        label="Log Level",
+        options=[ft.dropdown.Option(level) for level in ["ALL", "DEBUG", "INFO", "WARNING", "ERROR"]],
+        value="ALL",
+        width=170,
+        bgcolor=Colors.BACKGROUND,
+        border_radius=8,
+    )
+    log_list = ft.ListView(spacing=4, height=200, auto_scroll=True)
+
+    log_section = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.icons.SUBJECT, color=Colors.TEXT_SECONDARY),
+                ft.Text("Shared Runtime Logs", size=16, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                ft.Container(expand=True),
+                log_level_filter,
+            ], spacing=8, alignment=ft.MainAxisAlignment.START),
+            ft.Container(height=12),
+            ft.Container(
+                content=log_list,
+                padding=12,
+                bgcolor=Colors.BACKGROUND,
+                border_radius=8,
+            ),
+        ]),
+        padding=24,
+        bgcolor=Colors.SURFACE,
+        border_radius=10,
+        visible=False,
+    )
     
     output_section = ft.Container(
         content=ft.Column([
@@ -416,6 +457,38 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         if not provider.is_configured():
             raise ValueError(f"Provider '{provider_label}' is not configured. Update API keys in .env/settings.")
         return provider
+
+    def _format_log_line(event: dict[str, object]) -> str:
+        timestamp = str(event.get("timestamp") or "--")
+        level = str(event.get("level") or "INFO")
+        message = str(event.get("message") or "")
+        return f"{timestamp} [{level}] {message}"
+
+    def _refresh_log_list() -> None:
+        selected = log_level_filter.value or "ALL"
+        filtered_events = log_history
+        if selected != "ALL":
+            filtered_events = [
+                event for event in log_history if str(event.get("level", "")).upper() == selected
+            ]
+
+        log_list.controls = [
+            ft.Text(_format_log_line(event), size=12, color=Colors.TEXT_SECONDARY)
+            for event in filtered_events[-300:]
+        ]
+
+    def _poll_shared_logs(job_id: int) -> None:
+        while is_translating["value"] and active_job_id["value"] == job_id:
+            new_events = get_ui_log_events_since(log_cursor["value"])
+            if new_events:
+                for event in new_events:
+                    event_id = int(event.get("id", 0))
+                    if event_id > log_cursor["value"]:
+                        log_cursor["value"] = event_id
+                log_history.extend(new_events)
+                _refresh_log_list()
+                page.update()
+            threading.Event().wait(0.4)
     
     def on_translate(e):
         if not selected_file["path"] or is_translating["value"]:
@@ -445,10 +518,15 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         
         is_translating["value"] = True
         cancel_requested["value"] = False
+        clear_ui_log_events()
+        log_cursor["value"] = 0
+        log_history.clear()
+        log_list.controls = []
         translate_btn.disabled = True
         cancel_btn.visible = True
         cancel_btn.disabled = False
         progress_section.visible = True
+        log_section.visible = True
         output_section.visible = False
         progress_bar.value = None
         progress_text.value = "..."
@@ -457,16 +535,42 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         chapter_text.value = f"{provider_label} • {model_name} • {target_lang}"
         page.update()
 
+        def on_log_filter_change(_):
+            _refresh_log_list()
+            page.update()
+
+        log_level_filter.on_change = on_log_filter_change
+
         def run_translation(job_id: int):
             try:
                 if cancel_requested["value"]:
                     return
 
                 provider = _build_provider(provider_label, model_name)
+                logging_config = build_logging_config(provider=provider.provider_name)
+                targets = list(logging_config.get("targets", ["console"]))
+                if "ui" not in targets:
+                    targets.append("ui")
+                logging_config["targets"] = targets
+                logging_config["run_id"] = f"ui-{job_id}"
+                configure_logging(logging_config)
+                ui_logger = logging.getLogger("lexora.ui.translate")
+                ui_logger.info(
+                    "ui.translation.started",
+                    extra={
+                        "event": "ui.translation.started",
+                        "fields": {
+                            "job_id": job_id,
+                            "provider": provider.provider_name,
+                            "target_language": target_lang,
+                        },
+                    },
+                )
                 translator = Translator(provider=provider)
 
                 status_text.value = "Translating file..."
                 page.update()
+                threading.Thread(target=_poll_shared_logs, args=(job_id,), daemon=True).start()
 
                 translator.translate_file(
                     input_file=input_path,
@@ -490,15 +594,27 @@ def create_translate_view(page: ft.Page) -> ft.Control:
                 chapter_text.value = ""
                 output_text.value = f"Saved translated output: {output_path}"
                 output_section.visible = True
+                ui_logger.info(
+                    "ui.translation.completed",
+                    extra={
+                        "event": "ui.translation.completed",
+                        "fields": {"job_id": job_id, "output_file": output_path},
+                    },
+                )
             except Exception as exc:
                 progress_bar.value = 0
                 progress_text.value = "0%"
                 status_text.value = f"Failed: {exc}"
                 status_text.color = Colors.ERROR
                 chapter_text.value = "Check provider credentials and selected model/deployment."
+                logging.getLogger("lexora.ui.translate").exception(
+                    "ui.translation.failed",
+                    extra={"event": "ui.translation.failed", "fields": {"job_id": job_id}},
+                )
             finally:
                 if active_job_id["value"] == job_id:
                     is_translating["value"] = False
+                    _refresh_log_list()
                     translate_btn.disabled = False
                     cancel_btn.visible = False
                     cancel_btn.disabled = False
@@ -530,6 +646,8 @@ def create_translate_view(page: ft.Page) -> ft.Control:
         ft.Row([translate_btn, cancel_btn], alignment=ft.MainAxisAlignment.CENTER, spacing=16),
         ft.Container(height=16),
         progress_section,
+        ft.Container(height=16),
+        log_section,
         ft.Container(height=16),
         output_section,
     ], scroll=ft.ScrollMode.AUTO, expand=True)
