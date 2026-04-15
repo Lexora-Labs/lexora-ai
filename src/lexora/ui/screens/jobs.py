@@ -90,8 +90,6 @@ class JobsScreen(ft.Container):
             padding=ft.padding.only(top=16),
         )
         
-        self._update_list()
-        
         # Empty State
         self.empty_state = ft.Container(
             content=ft.Column([
@@ -103,6 +101,7 @@ class JobsScreen(ft.Container):
             expand=True,
             visible=False,
         )
+        self._update_list()
         
         # Layout
         self.content = ft.Column([
@@ -149,7 +148,16 @@ class JobsScreen(ft.Container):
         }
         
         icon, color, status_text = status_config.get(job.status, (ft.icons.HELP, Colors.TEXT_SECONDARY, "Unknown"))
-        
+
+        menu_items: List[ft.PopupMenuItem] = [
+            ft.PopupMenuItem(text="View details", icon=ft.icons.INFO),
+        ]
+        if job.status in (JobStatus.QUEUED, JobStatus.IN_PROGRESS):
+            menu_items.append(ft.PopupMenuItem(text="Cancel", icon=ft.icons.CANCEL))
+        if job.status == JobStatus.FAILED:
+            menu_items.append(ft.PopupMenuItem(text="Retry", icon=ft.icons.REFRESH))
+        menu_items.append(ft.PopupMenuItem(text="Delete", icon=ft.icons.DELETE))
+
         # Progress bar (only for in-progress jobs)
         progress_row = ft.Container(visible=False)
         if job.status == JobStatus.IN_PROGRESS:
@@ -191,13 +199,7 @@ class JobsScreen(ft.Container):
                     ft.Container(width=8),
                     ft.PopupMenuButton(
                         icon=ft.icons.MORE_VERT,
-                        icon_color=Colors.TEXT_SECONDARY,
-                        items=[
-                            ft.PopupMenuItem(text="View Details", icon=ft.icons.INFO),
-                            ft.PopupMenuItem(text="Cancel", icon=ft.icons.CANCEL) if job.status in [JobStatus.QUEUED, JobStatus.IN_PROGRESS] else None,
-                            ft.PopupMenuItem(text="Retry", icon=ft.icons.REFRESH) if job.status == JobStatus.FAILED else None,
-                            ft.PopupMenuItem(text="Delete", icon=ft.icons.DELETE),
-                        ],
+                        items=menu_items,
                     ),
                 ]),
                 progress_row,

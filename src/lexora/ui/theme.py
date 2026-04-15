@@ -43,39 +43,42 @@ class ColorPalette:
     SUCCESS: str
     WARNING: str
     DIVIDER: str
+    BORDER: str
     INFO: str               # accent color for variety
 
 
-# Lexora Blueprint – Dark (default)
+# Lexora Blueprint – Dark (see lexora-project/docs/40-planning/flet-ui-desktop-web-plan.md)
 DARK_PALETTE = ColorPalette(
-    BACKGROUND="#0F172A",       # Deep Navy
-    SURFACE="#1E293B",          # Dark Slate
-    SURFACE_VARIANT="#263245",  # Slightly lighter slate for cards
-    PRIMARY="#06B6D4",          # Bright Cyan
-    PRIMARY_DARK="#0891B2",     # Darker Cyan
-    TEXT_PRIMARY="#F8FAFC",     # Off-White
-    TEXT_SECONDARY="#94A3B8",   # Light Gray
-    ERROR="#F43F5E",            # Coral Red
-    SUCCESS="#10B981",          # Emerald Green
-    WARNING="#F59E0B",          # Amber
-    DIVIDER="#1E293B",          # Same as surface for subtle dividers
-    INFO="#7C3AED",             # Violet (accent for variety)
+    BACKGROUND="#0F1724",
+    SURFACE="#162233",
+    SURFACE_VARIANT="#1B2A3F",
+    PRIMARY="#2F6FED",
+    PRIMARY_DARK="#255ECE",
+    TEXT_PRIMARY="#E5ECF6",
+    TEXT_SECONDARY="#8FA4BF",
+    ERROR="#D94C4C",
+    SUCCESS="#1FA971",
+    WARNING="#F0A43A",
+    DIVIDER="#2B3A52",
+    BORDER="#2B3A52",
+    INFO="#5A8BB0",
 )
 
 # Lexora Blueprint – Light
 LIGHT_PALETTE = ColorPalette(
-    BACKGROUND="#F0F4F8",       # Soft Off-White
-    SURFACE="#FFFFFF",          # White
-    SURFACE_VARIANT="#E8EFF5",  # Light Blue-Gray for cards
-    PRIMARY="#0891B2",          # Darker Cyan (better contrast on light)
-    PRIMARY_DARK="#0E7490",     # Even darker for hover
-    TEXT_PRIMARY="#0F172A",     # Deep Navy (reversed from dark)
-    TEXT_SECONDARY="#475569",   # Medium Slate Gray
-    ERROR="#E11D48",            # Rose Red
-    SUCCESS="#059669",          # Emerald
-    WARNING="#D97706",          # Amber (slightly darker)
-    DIVIDER="#CBD5E1",          # Light Slate for dividers
-    INFO="#6D28D9",             # Deeper violet for light mode contrast
+    BACKGROUND="#EEF3FA",
+    SURFACE="#F5F8FC",
+    SURFACE_VARIANT="#E8EEF6",
+    PRIMARY="#2F6FED",
+    PRIMARY_DARK="#255ECE",
+    TEXT_PRIMARY="#0F172A",
+    TEXT_SECONDARY="#475569",
+    ERROR="#D94C4C",
+    SUCCESS="#1FA971",
+    WARNING="#F0A43A",
+    DIVIDER="#D4DEEA",
+    BORDER="#D4DEEA",
+    INFO="#5A8BB0",
 )
 
 
@@ -109,6 +112,7 @@ class Colors:
     SUCCESS: str = DARK_PALETTE.SUCCESS
     WARNING: str = DARK_PALETTE.WARNING
     DIVIDER: str = DARK_PALETTE.DIVIDER
+    BORDER: str = DARK_PALETTE.BORDER
     INFO: str = DARK_PALETTE.INFO
 
     _lock: threading.Lock = threading.Lock()
@@ -128,6 +132,7 @@ class Colors:
             cls.SUCCESS = palette.SUCCESS
             cls.WARNING = palette.WARNING
             cls.DIVIDER = palette.DIVIDER
+            cls.BORDER = palette.BORDER
             cls.INFO = palette.INFO
 
 
@@ -144,12 +149,12 @@ def _make_color_scheme(palette: ColorPalette) -> ft.ColorScheme:
         surface=palette.SURFACE,
         background=palette.BACKGROUND,
         error=palette.ERROR,
-        on_primary=palette.TEXT_PRIMARY,
-        on_primary_container=palette.TEXT_PRIMARY,
+        on_primary="#FFFFFF",
+        on_primary_container="#FFFFFF",
         on_surface=palette.TEXT_PRIMARY,
         on_background=palette.TEXT_PRIMARY,
-        on_error=palette.TEXT_PRIMARY,
-        outline=palette.DIVIDER,
+        on_error="#FFFFFF",
+        outline=palette.BORDER,
     )
 
 
@@ -162,6 +167,7 @@ def make_flet_theme(palette: ColorPalette) -> ft.Theme:
     """
     return ft.Theme(
         color_scheme=_make_color_scheme(palette),
+        font_family="Inter, Segoe UI, Arial, sans-serif",
         scrollbar_theme=ft.ScrollbarTheme(
             thumb_color=palette.TEXT_SECONDARY,
             track_color=palette.SURFACE,

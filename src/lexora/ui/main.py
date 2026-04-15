@@ -1,24 +1,22 @@
 """
 Lexora AI Desktop UI - Main Entry Point
 
-A minimal desktop test harness for the lexora-ai translation engine.
-Built with Flet for cross-platform support.
+Full app shell (navigation, EN/VI, jobs, translate, settings) per UI plan.
 """
 
+from __future__ import annotations
+
+import asyncio
+import base64
 import os
 import socket
 import sys
-import asyncio
 from pathlib import Path
+from typing import Any, cast
+
 import flet as ft
-from lexora.ui.views.home import HomeView
-from lexora.ui.theme import (
-    Colors,
-    apply_theme,
-    cycle_theme_mode,
-    theme_mode_icon,
-    theme_mode_label,
-)
+
+from lexora.ui.app_shell import attach_lexora_shell
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -40,59 +38,57 @@ def _resolve_logo_path(theme_mode: ft.ThemeMode) -> Path:
     return BRANDING_LOGO_FALLBACK_SVG
 
 
-def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
-    """Set app/window icon and favicon from the branding ICO when available."""
+def _load_logo_data_uri(theme_mode: ft.ThemeMode) -> str | None:
     logo_path = _resolve_logo_path(theme_mode)
-    has_svg = logo_path.exists()
+    if not logo_path.exists():
+        return None
+    svg_bytes = logo_path.read_bytes()
+    encoded = base64.b64encode(svg_bytes).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
+    page_any = cast(Any, page)
+    logo_path = _resolve_logo_path(theme_mode)
+    logo_data_uri = _load_logo_data_uri(theme_mode)
+    has_svg = bool(logo_data_uri) or logo_path.exists()
     has_ico = BRANDING_APP_ICON_ICO.exists()
     if not has_svg and not has_ico:
         return
 
     icon_path = str((BRANDING_APP_ICON_ICO if has_ico else logo_path).resolve())
-    if hasattr(page, "window") and hasattr(page.window, "icon"):
-        page.window.icon = icon_path
-    elif hasattr(page, "window_icon"):
-        page.window_icon = icon_path
+    window_obj = getattr(page_any, "window", None)
+    if window_obj is not None and hasattr(window_obj, "icon"):
+        setattr(window_obj, "icon", icon_path)
+    elif hasattr(page_any, "window_icon"):
+        setattr(page_any, "window_icon", icon_path)
 
-    if hasattr(page, "favicon"):
-        page.favicon = BRANDING_APP_ICON_ASSET_PATH if has_ico else logo_path.as_posix()
+    if hasattr(page_any, "favicon"):
+        setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH if has_ico else logo_data_uri or logo_path.as_posix())
 
 
-def main(page: ft.Page):
-    """Main application entry point."""
-
-    current_theme_mode = ft.ThemeMode.DARK
-
-    # Page configuration
+def main(page: ft.Page) -> None:
     page.title = "Lexora AI"
-    _set_app_icon(page, current_theme_mode)
-    if hasattr(page, "window"):
-        page.window.width = 600
-        page.window.height = 800
-        page.window.min_width = 500
-        page.window.min_height = 600
+    _set_app_icon(page, ft.ThemeMode.SYSTEM)
+    page_any = cast(Any, page)
+    window_obj = getattr(page_any, "window", None)
+    if window_obj is not None:
+        setattr(window_obj, "width", 1100)
+        setattr(window_obj, "height", 750)
+        setattr(window_obj, "min_width", 800)
+        setattr(window_obj, "min_height", 600)
     else:
-        page.window_width = 600
-        page.window_height = 800
-        page.window_min_width = 500
-        page.window_min_height = 600
+        setattr(page_any, "window_width", 1100)
+        setattr(page_any, "window_height", 750)
+        setattr(page_any, "window_min_width", 800)
+        setattr(page_any, "window_min_height", 600)
     page.padding = 0
 
-    # Apply default theme (dark) – also sets page.theme / page.dark_theme
-    apply_theme(page, current_theme_mode)
-    page.bgcolor = Colors.BACKGROUND
-
-    # Create home view
-    home_view = HomeView(page)
-
-    # Add to page
-    page.add(home_view)
-    page.update()
+    attach_lexora_shell(page, set_app_icon=_set_app_icon)
 
 
 if __name__ == "__main__":
     if sys.platform.startswith("win"):
-        # Avoid Proactor transport shutdown races on Windows (WinError 10054).
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     def _is_port_available(port: int) -> bool:
@@ -103,7 +99,7 @@ if __name__ == "__main__":
         except OSError:
             return False
 
-    def _pick_port(default: int = 8550) -> int:
+    def _pick_port() -> int:
         env_port = os.getenv("LEXORA_UI_PORT")
         if env_port:
             try:
@@ -112,7 +108,6 @@ if __name__ == "__main__":
                     return requested
             except ValueError:
                 pass
-
         return 0
 
     ft.app(target=main, port=_pick_port(), assets_dir=str(REPO_ROOT / "assets"))

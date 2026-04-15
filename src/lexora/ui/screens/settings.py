@@ -9,9 +9,11 @@ Application settings:
 """
 
 import flet as ft
-from typing import Optional, Dict
+from typing import Callable, Dict, Optional
+
 import os
 
+from lexora.ui.i18n import translate
 from lexora.ui.theme import Colors
 
 
@@ -49,9 +51,17 @@ PROVIDERS_CONFIG = {
 class SettingsScreen(ft.Container):
     """Settings screen with configuration options."""
 
-    def __init__(self, page: ft.Page):
+    def __init__(
+        self,
+        page: ft.Page,
+        *,
+        app_locale: str = "en",
+        on_app_language: Optional[Callable[[str], None]] = None,
+    ):
         super().__init__()
         self.page = page
+        self._app_locale = app_locale
+        self._on_app_language = on_app_language
         self._build()
 
     def _build(self):
@@ -179,6 +189,20 @@ class SettingsScreen(ft.Container):
         )
         
         # UI Settings Section
+        self.app_language_dropdown = ft.Dropdown(
+            label=translate(self._app_locale, "settings.ui_language"),
+            options=[
+                ft.dropdown.Option("en", "English"),
+                ft.dropdown.Option("vi", "Tiếng Việt"),
+            ],
+            value=self._app_locale if self._app_locale in ("en", "vi") else "en",
+            width=200,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+            on_change=self._on_app_language_dropdown,
+            disabled=self._on_app_language is None,
+        )
+
         self.theme_dropdown = ft.Dropdown(
             label="Theme",
             options=[
@@ -201,8 +225,9 @@ class SettingsScreen(ft.Container):
                 ], spacing=8),
                 ft.Container(height=16),
                 ft.Row([
+                    self.app_language_dropdown,
                     self.theme_dropdown,
-                ]),
+                ], spacing=16, wrap=True),
             ]),
             padding=24,
             bgcolor=Colors.SURFACE,
@@ -307,6 +332,12 @@ class SettingsScreen(ft.Container):
             self._show_snackbar(f"API key for {provider} saved successfully!", Colors.SUCCESS)
         else:
             self._show_snackbar("Please enter an API key", Colors.WARNING)
+
+    def _on_app_language_dropdown(self, e: ft.ControlEvent) -> None:
+        """Notify shell to relabel UI (EN/VI)."""
+        lang = e.control.value
+        if lang in ("en", "vi") and self._on_app_language:
+            self._on_app_language(lang)
 
     def _on_theme_change(self, e):
         """Apply the selected theme immediately."""

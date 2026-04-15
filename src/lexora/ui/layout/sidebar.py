@@ -1,44 +1,56 @@
 """
 Sidebar Component - Navigation Rail
 
-Collapsible sidebar with main navigation menu.
+Collapsible sidebar aligned with Lexora UI plan (8 primary destinations).
 """
 
 import flet as ft
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from lexora.ui.theme import Colors
 
 
+_DESTINATION_ICONS: list[tuple[str, str]] = [
+    (ft.icons.HOME_OUTLINED, ft.icons.HOME),
+    (ft.icons.FOLDER_OUTLINED, ft.icons.FOLDER),
+    (ft.icons.TRANSLATE_OUTLINED, ft.icons.TRANSLATE),
+    (ft.icons.BOOKMARKS_OUTLINED, ft.icons.BOOKMARKS),
+    (ft.icons.RATE_REVIEW_OUTLINED, ft.icons.RATE_REVIEW),
+    (ft.icons.WORK_HISTORY_OUTLINED, ft.icons.WORK_HISTORY),
+    (ft.icons.SETTINGS_OUTLINED, ft.icons.SETTINGS),
+    (ft.icons.INFO_OUTLINED, ft.icons.INFO),
+]
+
+
+def _make_destinations(labels: List[str]) -> list[ft.NavigationRailDestination]:
+    out: list[ft.NavigationRailDestination] = []
+    for i, (ico, sel) in enumerate(_DESTINATION_ICONS):
+        label = labels[i] if i < len(labels) else ""
+        out.append(ft.NavigationRailDestination(icon=ico, selected_icon=sel, label=label))
+    return out
+
+
 class Sidebar(ft.Container):
-    """
-    Collapsible sidebar with NavigationRail.
-    
-    Menu items:
-    - Translate
-    - Library
-    - Jobs
-    - Settings
-    """
+    """Collapsible sidebar with NavigationRail."""
 
     def __init__(
         self,
         page: ft.Page,
         on_navigate: Optional[Callable[[int], None]] = None,
         selected_index: int = 0,
+        labels: Optional[List[str]] = None,
     ):
         super().__init__()
         self._page = page
         self.on_navigate = on_navigate
         self._selected_index = selected_index
         self._expanded = True
-        
+        self._labels = labels or [""] * len(_DESTINATION_ICONS)
+
         self._build()
 
-    def _build(self):
+    def _build(self) -> None:
         """Build the sidebar UI."""
-        
-        # Navigation items
         self.nav_rail = ft.NavigationRail(
             selected_index=self._selected_index,
             label_type=ft.NavigationRailLabelType.ALL,
@@ -48,31 +60,9 @@ class Sidebar(ft.Container):
             bgcolor=Colors.SURFACE,
             indicator_color=Colors.PRIMARY,
             on_change=self._on_nav_change,
-            destinations=[
-                ft.NavigationRailDestination(
-                    icon=ft.icons.TRANSLATE_OUTLINED,
-                    selected_icon=ft.icons.TRANSLATE,
-                    label="Translate",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.LIBRARY_BOOKS_OUTLINED,
-                    selected_icon=ft.icons.LIBRARY_BOOKS,
-                    label="Library",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.WORK_HISTORY_OUTLINED,
-                    selected_icon=ft.icons.WORK_HISTORY,
-                    label="Jobs",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.SETTINGS_OUTLINED,
-                    selected_icon=ft.icons.SETTINGS,
-                    label="Settings",
-                ),
-            ],
+            destinations=_make_destinations(self._labels),
         )
-        
-        # Toggle button
+
         self.toggle_btn = ft.IconButton(
             icon=ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU,
             icon_color=Colors.TEXT_SECONDARY,
@@ -80,7 +70,6 @@ class Sidebar(ft.Container):
             on_click=self._toggle_sidebar,
         )
 
-        # Logo mark - simple book icon
         self.logo_mark = ft.Icon(
             ft.icons.MENU_BOOK,
             color=Colors.PRIMARY,
@@ -95,7 +84,6 @@ class Sidebar(ft.Container):
             visible=self._expanded,
         )
 
-        # Logo/Brand
         self.logo = ft.Container(
             content=ft.Row(
                 controls=[
@@ -112,7 +100,6 @@ class Sidebar(ft.Container):
         self.top_divider = ft.Divider(height=1, color=Colors.DIVIDER)
         self.bottom_divider = ft.Divider(height=1, color=Colors.DIVIDER)
 
-        # Layout
         self.content = ft.Column(
             controls=[
                 self.logo,
@@ -131,12 +118,17 @@ class Sidebar(ft.Container):
             spacing=0,
             expand=True,
         )
-        
+
         self.bgcolor = Colors.SURFACE
         self.border_radius = ft.border_radius.only(top_right=12, bottom_right=12)
         self._apply_theme()
 
-    def _apply_theme(self):
+    def set_labels(self, labels: List[str]) -> None:
+        """Update localized navigation labels."""
+        self._labels = labels
+        self.nav_rail.destinations = _make_destinations(self._labels)
+
+    def _apply_theme(self) -> None:
         """Refresh theme-sensitive sidebar colors."""
         self.logo_mark.color = Colors.PRIMARY
         self.logo_text.color = Colors.TEXT_PRIMARY
@@ -147,28 +139,25 @@ class Sidebar(ft.Container):
         self.bottom_divider.color = Colors.DIVIDER
         self.bgcolor = Colors.SURFACE
 
-    def before_update(self):
+    def before_update(self) -> None:
         """Keep sidebar visuals in sync with the active theme."""
         self._apply_theme()
 
-    def _on_nav_change(self, e):
+    def _on_nav_change(self, e) -> None:
         """Handle navigation change."""
         self._selected_index = e.control.selected_index
         if self.on_navigate:
             self.on_navigate(self._selected_index)
 
-    def _toggle_sidebar(self, e):
+    def _toggle_sidebar(self, e) -> None:
         """Toggle sidebar expanded/collapsed state."""
         self._expanded = not self._expanded
         self.nav_rail.extended = self._expanded
         self.toggle_btn.icon = ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU
-        
-        # Toggle logo text visibility
         self.logo_text.visible = self._expanded
-        
         self.update()
 
-    def set_selected(self, index: int):
+    def set_selected(self, index: int) -> None:
         """Set selected navigation index."""
         self._selected_index = index
         self.nav_rail.selected_index = index
@@ -176,5 +165,4 @@ class Sidebar(ft.Container):
 
     @property
     def is_expanded(self) -> bool:
-        """Check if sidebar is expanded."""
         return self._expanded
