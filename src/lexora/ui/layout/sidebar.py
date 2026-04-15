@@ -1,86 +1,78 @@
 """
 Sidebar Component - Navigation Rail
 
-Collapsible sidebar with main navigation menu.
+Collapsible sidebar for primary destinations.
 """
 
 import flet as ft
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from lexora.ui.theme import Colors
 
+_RAIL_COLLAPSED_WIDTH = 80
+
+
+_DESTINATION_ICONS: list[tuple[str, str]] = [
+    (ft.icons.FOLDER_OUTLINED, ft.icons.FOLDER),
+    (ft.icons.TRANSLATE_OUTLINED, ft.icons.TRANSLATE),
+    (ft.icons.WORK_HISTORY_OUTLINED, ft.icons.WORK_HISTORY),
+    (ft.icons.SETTINGS_OUTLINED, ft.icons.SETTINGS),
+    (ft.icons.INFO_OUTLINED, ft.icons.INFO),
+]
+
+
+def _make_destinations(labels: List[str]) -> list[ft.NavigationRailDestination]:
+    out: list[ft.NavigationRailDestination] = []
+    for i, (ico, sel) in enumerate(_DESTINATION_ICONS):
+        label = labels[i] if i < len(labels) else ""
+        out.append(ft.NavigationRailDestination(icon=ico, selected_icon=sel, label=label))
+    return out
+
 
 class Sidebar(ft.Container):
-    """
-    Collapsible sidebar with NavigationRail.
-    
-    Menu items:
-    - Translate
-    - Library
-    - Jobs
-    - Settings
-    """
+    """Collapsible sidebar with NavigationRail."""
 
     def __init__(
         self,
         page: ft.Page,
         on_navigate: Optional[Callable[[int], None]] = None,
         selected_index: int = 0,
+        labels: Optional[List[str]] = None,
     ):
         super().__init__()
         self._page = page
         self.on_navigate = on_navigate
         self._selected_index = selected_index
-        self._expanded = True
-        
+        self._expanded = False
+        self._labels = labels or [""] * len(_DESTINATION_ICONS)
+
         self._build()
 
-    def _build(self):
+    def _build(self) -> None:
         """Build the sidebar UI."""
-        
-        # Navigation items
         self.nav_rail = ft.NavigationRail(
             selected_index=self._selected_index,
             label_type=ft.NavigationRailLabelType.ALL,
-            min_width=80,
+            min_width=_RAIL_COLLAPSED_WIDTH,
             min_extended_width=200,
             extended=self._expanded,
             bgcolor=Colors.SURFACE,
             indicator_color=Colors.PRIMARY,
             on_change=self._on_nav_change,
-            destinations=[
-                ft.NavigationRailDestination(
-                    icon=ft.icons.TRANSLATE_OUTLINED,
-                    selected_icon=ft.icons.TRANSLATE,
-                    label="Translate",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.LIBRARY_BOOKS_OUTLINED,
-                    selected_icon=ft.icons.LIBRARY_BOOKS,
-                    label="Library",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.WORK_HISTORY_OUTLINED,
-                    selected_icon=ft.icons.WORK_HISTORY,
-                    label="Jobs",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.icons.SETTINGS_OUTLINED,
-                    selected_icon=ft.icons.SETTINGS,
-                    label="Settings",
-                ),
-            ],
+            destinations=_make_destinations(self._labels),
         )
-        
-        # Toggle button
+
         self.toggle_btn = ft.IconButton(
             icon=ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU,
+            icon_size=20,
             icon_color=Colors.TEXT_SECONDARY,
             tooltip="Toggle sidebar",
+            width=36,
+            height=36,
+            style=ft.ButtonStyle(padding=0),
             on_click=self._toggle_sidebar,
         )
 
-        # Logo mark - simple book icon
         self.logo_mark = ft.Icon(
             ft.icons.MENU_BOOK,
             color=Colors.PRIMARY,
@@ -95,7 +87,6 @@ class Sidebar(ft.Container):
             visible=self._expanded,
         )
 
-        # Logo/Brand
         self.logo = ft.Container(
             content=ft.Row(
                 controls=[
@@ -106,13 +97,20 @@ class Sidebar(ft.Container):
                 alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
+            width=_RAIL_COLLAPSED_WIDTH if not self._expanded else None,
+            alignment=ft.alignment.center,
             padding=ft.padding.symmetric(vertical=16),
         )
 
         self.top_divider = ft.Divider(height=1, color=Colors.DIVIDER)
         self.bottom_divider = ft.Divider(height=1, color=Colors.DIVIDER)
+        self.toggle_container = ft.Container(
+            content=self.toggle_btn,
+            width=_RAIL_COLLAPSED_WIDTH if not self._expanded else None,
+            alignment=ft.alignment.center,
+            padding=8,
+        )
 
-        # Layout
         self.content = ft.Column(
             controls=[
                 self.logo,
@@ -122,21 +120,23 @@ class Sidebar(ft.Container):
                     expand=True,
                 ),
                 self.bottom_divider,
-                ft.Container(
-                    content=self.toggle_btn,
-                    alignment=ft.alignment.center,
-                    padding=8,
-                ),
+                self.toggle_container,
             ],
             spacing=0,
             expand=True,
         )
-        
+
         self.bgcolor = Colors.SURFACE
         self.border_radius = ft.border_radius.only(top_right=12, bottom_right=12)
+        self._sync_collapsed_layout()
         self._apply_theme()
 
-    def _apply_theme(self):
+    def set_labels(self, labels: List[str]) -> None:
+        """Update localized navigation labels."""
+        self._labels = labels
+        self.nav_rail.destinations = _make_destinations(self._labels)
+
+    def _apply_theme(self) -> None:
         """Refresh theme-sensitive sidebar colors."""
         self.logo_mark.color = Colors.PRIMARY
         self.logo_text.color = Colors.TEXT_PRIMARY
@@ -147,28 +147,36 @@ class Sidebar(ft.Container):
         self.bottom_divider.color = Colors.DIVIDER
         self.bgcolor = Colors.SURFACE
 
-    def before_update(self):
+    def before_update(self) -> None:
         """Keep sidebar visuals in sync with the active theme."""
         self._apply_theme()
 
-    def _on_nav_change(self, e):
+    def _on_nav_change(self, e) -> None:
         """Handle navigation change."""
         self._selected_index = e.control.selected_index
         if self.on_navigate:
             self.on_navigate(self._selected_index)
 
-    def _toggle_sidebar(self, e):
+    def _toggle_sidebar(self, e) -> None:
         """Toggle sidebar expanded/collapsed state."""
         self._expanded = not self._expanded
         self.nav_rail.extended = self._expanded
         self.toggle_btn.icon = ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU
-        
-        # Toggle logo text visibility
         self.logo_text.visible = self._expanded
-        
+        self._sync_collapsed_layout()
         self.update()
 
-    def set_selected(self, index: int):
+    def _sync_collapsed_layout(self) -> None:
+        """Keep brand/toggle centered when sidebar is collapsed."""
+        self.logo.alignment = ft.alignment.center
+        self.logo.width = _RAIL_COLLAPSED_WIDTH if not self._expanded else None
+        self.logo.padding = ft.padding.symmetric(vertical=16 if self._expanded else 12)
+        self.logo_mark.size = 32 if self._expanded else 26
+        self.toggle_container.alignment = ft.alignment.center
+        self.toggle_container.width = _RAIL_COLLAPSED_WIDTH if not self._expanded else None
+        self.toggle_container.padding = ft.padding.symmetric(vertical=8 if self._expanded else 6)
+
+    def set_selected(self, index: int) -> None:
         """Set selected navigation index."""
         self._selected_index = index
         self.nav_rail.selected_index = index
@@ -176,5 +184,4 @@ class Sidebar(ft.Container):
 
     @property
     def is_expanded(self) -> bool:
-        """Check if sidebar is expanded."""
         return self._expanded

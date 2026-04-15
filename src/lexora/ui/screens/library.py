@@ -10,7 +10,6 @@ View and manage translated books:
 import flet as ft
 from typing import Optional, List, Dict
 from dataclasses import dataclass
-from datetime import datetime
 
 from lexora.ui.theme import Colors
 
@@ -106,9 +105,7 @@ class LibraryScreen(ft.Container):
             spacing=16,
             run_spacing=16,
         )
-        
-        self._update_grid()
-        
+
         # Empty State
         self.empty_state = ft.Container(
             content=ft.Column([
@@ -120,6 +117,7 @@ class LibraryScreen(ft.Container):
             expand=True,
             visible=False,
         )
+        self._update_grid()
         
         # Layout
         self.content = ft.Column([

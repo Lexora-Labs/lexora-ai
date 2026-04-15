@@ -1,15 +1,17 @@
 """UI Screens Package."""
 
-from .dashboard import DashboardScreen
-from .translate import TranslateScreen
-from .library import LibraryScreen
+from .about import AboutScreen
 from .jobs import JobsScreen
+from .library import LibraryScreen
+from .projects import ProjectsScreen
 from .settings import SettingsScreen
+from .translate import TranslateScreen
 
 __all__ = [
-    "DashboardScreen",
-    "TranslateScreen",
-    "LibraryScreen",
+    "AboutScreen",
     "JobsScreen",
+    "LibraryScreen",
+    "ProjectsScreen",
     "SettingsScreen",
+    "TranslateScreen",
 ]

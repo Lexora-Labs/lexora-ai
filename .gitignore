@@ -231,3 +231,6 @@ book5.jsonl
 # Test/debug files
 test_auth.py
 docs/vibe-context.md
+
+# Local benchmark and analysis outputs
+reports/
