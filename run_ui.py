@@ -38,12 +38,7 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 def _resolve_logo_path(theme_mode: ft.ThemeMode, page: ft.Page | None = None) -> Path:
-    if theme_mode == ft.ThemeMode.LIGHT:
-        preferred = BRANDING_LOGO_LIGHT_SVG
-    elif theme_mode == ft.ThemeMode.SYSTEM and page is not None and hasattr(page, "platform_brightness"):
-        preferred = BRANDING_LOGO_LIGHT_SVG if page.platform_brightness == ft.Brightness.LIGHT else BRANDING_LOGO_DARK_SVG
-    else:
-        preferred = BRANDING_LOGO_DARK_SVG
+    preferred = BRANDING_LOGO_LIGHT_SVG
     if preferred.exists():
         return preferred
     return BRANDING_LOGO_FALLBACK_SVG
@@ -75,10 +70,10 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
         setattr(page_any, "window_icon", icon_path)
 
     if hasattr(page_any, "favicon"):
-        if has_ico:
-            setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
-        elif has_svg:
+        if has_svg:
             setattr(page_any, "favicon", logo_data_uri or logo_path.as_posix())
+        elif has_ico:
+            setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
 
 
 def main(page: ft.Page) -> None:

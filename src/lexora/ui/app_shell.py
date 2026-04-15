@@ -20,11 +20,8 @@ from lexora.ui.theme import (
     cycle_theme_mode,
     theme_mode_icon,
 )
-from lexora.ui.screens.dashboard import DashboardScreen
 from lexora.ui.screens.projects import ProjectsScreen
 from lexora.ui.screens.translate import TranslateScreen
-from lexora.ui.screens.glossary import GlossaryScreen
-from lexora.ui.screens.qa_review import QAReviewScreen
 from lexora.ui.screens.jobs import JobsScreen
 from lexora.ui.screens.settings import SettingsScreen
 from lexora.ui.screens.about import AboutScreen
@@ -83,15 +80,6 @@ def attach_lexora_shell(
     layout_ref: dict[str, Optional[MainLayout]] = {"layout": None}
     projects_ref: dict[str, Optional[ProjectsScreen]] = {"screen": None}
 
-    def _open_library_tab() -> None:
-        layout = layout_ref["layout"]
-        ps = projects_ref["screen"]
-        if layout is not None:
-            layout.navigate_to(nav_ids.PROJECTS)
-        if ps is not None:
-            ps.select_library_tab()
-        page.update()
-
     def _open_workspace_tab() -> None:
         layout = layout_ref["layout"]
         ps = projects_ref["screen"]
@@ -118,16 +106,8 @@ def attach_lexora_shell(
         ps = ProjectsScreen(page, t)
         projects_ref["screen"] = ps
         views = {
-            nav_ids.DASHBOARD: DashboardScreen(
-                page,
-                on_navigate=lambda idx: layout_ref["layout"] and layout_ref["layout"].navigate_to(idx),
-                t=t,
-                on_open_library=_open_library_tab,
-            ),
             nav_ids.PROJECTS: ps,
             nav_ids.TRANSLATE: TranslateScreen(page),
-            nav_ids.GLOSSARY: GlossaryScreen(page, t),
-            nav_ids.QA_REVIEW: QAReviewScreen(page, t),
             nav_ids.JOBS: JobsScreen(page),
             nav_ids.SETTINGS: SettingsScreen(
                 page,

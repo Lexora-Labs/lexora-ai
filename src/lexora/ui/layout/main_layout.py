@@ -13,11 +13,8 @@ from lexora.ui.theme import Colors
 
 
 PAGE_KEYS: list[tuple[str, str]] = [
-    ("page.dashboard.title", "page.dashboard.subtitle"),
-    ("page.projects.title", "page.projects.subtitle"),
+    ("page.library.title", "page.library.subtitle"),
     ("page.translate.title", "page.translate.subtitle"),
-    ("page.glossary.title", "page.glossary.subtitle"),
-    ("page.qa_review.title", "page.qa_review.subtitle"),
     ("page.jobs.title", "page.jobs.subtitle"),
     ("page.settings.title", "page.settings.subtitle"),
     ("page.about.title", "page.about.subtitle"),
@@ -60,11 +57,8 @@ class MainLayout(ft.Container):
 
     def _nav_labels(self) -> list[str]:
         keys = [
-            "nav.dashboard",
-            "nav.projects",
+            "nav.library",
             "nav.translate",
-            "nav.glossary",
-            "nav.qa_review",
             "nav.jobs_queue",
             "nav.settings",
             "nav.about",

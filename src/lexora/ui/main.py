@@ -29,10 +29,7 @@ BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
 
 
 def _resolve_logo_path(theme_mode: ft.ThemeMode) -> Path:
-    if theme_mode == ft.ThemeMode.LIGHT:
-        preferred = BRANDING_LOGO_LIGHT_SVG
-    else:
-        preferred = BRANDING_LOGO_DARK_SVG
+    preferred = BRANDING_LOGO_LIGHT_SVG
     if preferred.exists():
         return preferred
     return BRANDING_LOGO_FALLBACK_SVG
@@ -64,7 +61,10 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
         setattr(page_any, "window_icon", icon_path)
 
     if hasattr(page_any, "favicon"):
-        setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH if has_ico else logo_data_uri or logo_path.as_posix())
+        if has_svg:
+            setattr(page_any, "favicon", logo_data_uri or logo_path.as_posix())
+        elif has_ico:
+            setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
 
 
 def main(page: ft.Page) -> None:

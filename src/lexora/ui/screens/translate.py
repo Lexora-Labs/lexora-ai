@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -21,6 +22,7 @@ from lexora.cli import (
 )
 from lexora.providers import canonical_provider_name, create_provider
 from lexora.translator import Translator
+from lexora.logging_framework import build_logging_config, configure_logging, get_ui_log_events
 from lexora.ui.theme import Colors
 
 
@@ -55,15 +57,27 @@ UI_PROVIDER_TO_CANONICAL = {
 
 load_dotenv()
 
+UI_CACHE_SCOPE_KEY = "lexora_ui_cache_scope"
+UI_CACHE_PATH_KEY = "lexora_ui_cache_path"
+UI_NO_CACHE_KEY = "lexora_ui_no_cache"
+UI_CLEAR_CACHE_KEY = "lexora_ui_clear_cache"
+CONTROL_HEIGHT = 48
+CONTROL_TEXT_SIZE = 12
+DROPDOWN_HEIGHT = 55
+
 
 def _ensure_console_logging() -> None:
-    """Ensure UI logs are visible in terminal when app runs."""
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        )
+    """Ensure app logging includes a UI sink for in-app log rendering."""
+    current_targets = set(
+        token.strip().lower()
+        for token in os.getenv("LEXORA_LOG_TARGETS", "console").split(",")
+        if token.strip()
+    )
+    if not current_targets:
+        current_targets = {"console"}
+    current_targets.add("ui")
+    config = build_logging_config(targets=",".join(sorted(current_targets)))
+    configure_logging(config)
 
 
 class TranslateScreen(ft.Container):
@@ -80,6 +94,8 @@ class TranslateScreen(ft.Container):
         self._is_translating = False
         self._cancel_requested = False
         self._active_job_id = 0
+        self._ui_log_cursor = 0
+        self._ui_log_poller_started = False
         self._build()
 
     def _build(self) -> None:
@@ -90,31 +106,44 @@ class TranslateScreen(ft.Container):
 
         self.file_icon = ft.Icon(ft.icons.MENU_BOOK, color=Colors.PRIMARY, size=40)
         self.file_name = ft.Text("No file selected", size=16, color=Colors.TEXT_SECONDARY)
-        self.file_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY)
+        self.file_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY, visible=False)
         self.select_btn = ft.ElevatedButton(
             "Select input file",
             icon=ft.icons.FOLDER_OPEN,
             bgcolor=Colors.PRIMARY,
             color=Colors.TEXT_PRIMARY,
+            height=CONTROL_HEIGHT,          
             on_click=self._pick_file,
         )
         file_section = ft.Container(
-            padding=24,
+            padding=8,
             bgcolor=Colors.SURFACE,
             border_radius=10,
             content=ft.Column(
                 [
                     ft.Row([ft.Icon(ft.icons.UPLOAD_FILE), ft.Text("File Selection", size=16, weight=ft.FontWeight.W_600)], spacing=8),
-                    ft.Container(height=16),
+                    ft.Container(height=4),
                     ft.Row(
                         [
-                            self.file_icon,
-                            ft.Container(width=16),
-                            ft.Column([self.file_name, self.file_path], spacing=2, expand=True),
+                            ft.Icon(ft.icons.MENU_BOOK, color=Colors.PRIMARY, size=28),
+                            ft.Container(width=12),
+                            ft.Container(
+                                expand=True,
+                                height=CONTROL_HEIGHT,
+                                alignment=ft.alignment.center_left,
+                                content=ft.Column(
+                                    [self.file_name, self.file_path],
+                                    spacing=0,
+                                    tight=True,
+                                    horizontal_alignment=ft.CrossAxisAlignment.START,
+                                ),                              
+                            ),
                             self.select_btn,
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
+                  
                 ]
             ),
         )
@@ -124,6 +153,8 @@ class TranslateScreen(ft.Container):
             options=[ft.dropdown.Option(p) for p in PROVIDERS.keys()],
             value="OpenAI",
             width=180,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
             on_change=self._on_provider_change,
         )
         self.model_dropdown = ft.Dropdown(
@@ -131,24 +162,47 @@ class TranslateScreen(ft.Container):
             options=[ft.dropdown.Option(m) for m in PROVIDERS["OpenAI"]],
             value=PROVIDERS["OpenAI"][0],
             width=220,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
         )
         self.target_language_dropdown = ft.Dropdown(
             label="Target Language",
             options=[ft.dropdown.Option(key=code, text=name) for code, name in LANGUAGES],
             value="vi",
             width=180,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+            on_change=self._on_target_language_change,
         )
         self.source_language_dropdown = ft.Dropdown(
             label="Source Language",
             options=[ft.dropdown.Option("auto", "Auto detect")] + [ft.dropdown.Option(key=code, text=name) for code, name in LANGUAGES],
             value="auto",
             width=180,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
         )
         self.mode_dropdown = ft.Dropdown(
             label="Mode",
             options=[ft.dropdown.Option("replace"), ft.dropdown.Option("bilingual")],
             value="replace",
-            width=140,
+            width=130,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+        )
+        self.output_file_field = ft.TextField(
+            label="Output file",
+            value="",
+            hint_text="Auto: inputFileName<lang>.ext",
+            width=500,
+            height=CONTROL_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+        )
+        self.output_reset_btn = ft.OutlinedButton(
+            "Reset default",
+            icon=ft.icons.RESTART_ALT,
+            height=CONTROL_HEIGHT,
+            on_click=self._on_reset_output_default,
         )
 
         self.glossary_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY)
@@ -161,46 +215,117 @@ class TranslateScreen(ft.Container):
             wrap=True,
         )
 
-        self.cache_scope_dropdown = ft.Dropdown(
-            label="Cache Scope",
-            options=[ft.dropdown.Option("global"), ft.dropdown.Option("per-ebook"), ft.dropdown.Option("disabled")],
-            value="global",
-            width=160,
-        )
-        self.cache_path_field = ft.TextField(label="Cache Path", value=DEFAULT_GLOBAL_CACHE_PATH, width=340)
-        self.no_cache_switch = ft.Switch(value=False)
-        self.clear_cache_switch = ft.Switch(value=False)
-
-        self.limit_docs_field = ft.TextField(label="Limit docs", value="", width=110)
-        self.start_doc_field = ft.TextField(label="Start doc", value="", width=110)
-        self.end_doc_field = ft.TextField(label="End doc", value="", width=110)
-        self.chunk_size_field = ft.TextField(label="Chunk size", value="1200", width=120)
-        self.chunk_context_field = ft.TextField(label="Context window", value="0", width=130)
+        self.limit_docs_field = ft.TextField(label="Limit docs", value="", width=110, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
+        self.start_doc_field = ft.TextField(label="Start doc", value="", width=110, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
+        self.end_doc_field = ft.TextField(label="End doc", value="", width=110, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
+        self.chunk_size_field = ft.TextField(label="Chunk size", value="1200", width=120, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
+        self.chunk_context_field = ft.TextField(label="Context window", value="0", width=130, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
         self.structured_batch_switch = ft.Switch(value=False)
-        self.structured_max_chars_field = ft.TextField(label="Structured max chars", value="8000", width=160)
-        self.report_path_field = ft.TextField(label="Report path (optional)", value="", width=340)
+        self.structured_max_chars_field = ft.TextField(label="Structured max chars", value="8000", width=160, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
+        self.report_path_field = ft.TextField(
+            label="Report path (optional)",
+            value="",
+            height=CONTROL_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+        )
 
         settings_section = ft.Container(
-            padding=24,
+            padding=10,
             bgcolor=Colors.SURFACE,
             border_radius=10,
             content=ft.Column(
                 [
                     ft.Row([ft.Icon(ft.icons.SETTINGS), ft.Text("Translation Settings", size=16, weight=ft.FontWeight.W_600)], spacing=8),
-                    ft.Container(height=12),
+                    ft.Container(height=6),
                     ft.Row([self.provider_dropdown, self.model_dropdown, self.target_language_dropdown, self.source_language_dropdown, self.mode_dropdown], spacing=12, wrap=True),
-                    ft.Container(height=8),
+                    ft.Row([self.output_file_field, self.output_reset_btn], spacing=8, wrap=True),
+                    ft.Container(height=4),
                     glossary_row,
                     self.glossary_path,
-                    ft.Container(height=8),
-                    ft.Row([self.cache_scope_dropdown, self.cache_path_field], spacing=12, wrap=True),
-                    ft.Row([ft.Text("No cache"), self.no_cache_switch, ft.Text("Clear cache before run"), self.clear_cache_switch], spacing=8),
-                    ft.Container(height=8),
-                    ft.Row([self.limit_docs_field, self.start_doc_field, self.end_doc_field, self.chunk_size_field, self.chunk_context_field], spacing=10, wrap=True),
-                    ft.Row([ft.Text("Structured EPUB batch"), self.structured_batch_switch, self.structured_max_chars_field], spacing=8, wrap=True),
-                    self.report_path_field,
                 ],
-                spacing=6,
+                spacing=4,
+            ),
+        )
+
+        self._advanced_expanded = False
+        self.advanced_toggle_btn = ft.IconButton(
+            icon=ft.icons.EXPAND_MORE,
+            icon_size=18,
+            icon_color=Colors.TEXT_SECONDARY,
+            tooltip="Expand advanced config",
+            width=CONTROL_HEIGHT,
+            height=CONTROL_HEIGHT,
+            style=ft.ButtonStyle(padding=0),
+            on_click=self._toggle_advanced_config,
+        )
+        self.advanced_controls = ft.Container(
+            visible=False,
+            padding=ft.padding.only(top=4),
+            content=ft.Column(
+                [
+                    ft.Container(
+                        alignment=ft.alignment.center_left,
+                        content=ft.Row(
+                            [self.limit_docs_field, self.start_doc_field, self.end_doc_field, self.chunk_size_field, self.chunk_context_field],
+                            spacing=8,
+                            wrap=True,
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                    ),
+                    ft.Container(
+                        alignment=ft.alignment.center_left,
+                        content=ft.Row(
+                            [
+                                ft.Text("Structured EPUB batch"),
+                                self.structured_batch_switch,
+                                self.structured_max_chars_field,
+                            ],
+                            spacing=8,
+                            wrap=True,
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                    ),
+                    ft.Container(
+                        alignment=ft.alignment.center_left,
+                        content=ft.Row(
+                            [ft.Container(content=self.report_path_field, expand=True)],
+                            spacing=8,
+                            wrap=False,
+                            alignment=ft.MainAxisAlignment.START,
+                        ),
+                    ),
+                ],
+                spacing=10,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+        )
+        advanced_section = ft.Container(
+            padding=ft.padding.symmetric(horizontal=10, vertical=6),
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+            content=ft.Column(
+                [
+                    ft.Container(
+                        height=CONTROL_HEIGHT,
+                        alignment=ft.alignment.center_left,
+                        content=ft.Row(
+                            [
+                                ft.Row(
+                                    [ft.Icon(ft.icons.TUNE), ft.Text("Advanced config", size=16, weight=ft.FontWeight.W_600)],
+                                    spacing=8,
+                                    alignment=ft.MainAxisAlignment.START,
+                                ),
+                                ft.Container(expand=True),
+                                self.advanced_toggle_btn,
+                            ],
+                            alignment=ft.MainAxisAlignment.START,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    ),
+                    self.advanced_controls,
+                ],
+                spacing=0,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
             ),
         )
 
@@ -209,7 +334,7 @@ class TranslateScreen(ft.Container):
         self.status_text = ft.Text("Ready to translate", size=14, color=Colors.TEXT_SECONDARY)
         self.chapter_text = ft.Text("", size=12, color=Colors.TEXT_SECONDARY, italic=True)
         self.progress_section = ft.Container(
-            padding=24,
+            padding=10,
             bgcolor=Colors.SURFACE,
             border_radius=10,
             visible=False,
@@ -228,7 +353,7 @@ class TranslateScreen(ft.Container):
         self.output_name = ft.Text("", size=16, weight=ft.FontWeight.W_500, color=Colors.TEXT_PRIMARY)
         self.output_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY)
         self.output_section = ft.Container(
-            padding=24,
+            padding=10,
             bgcolor=Colors.SURFACE,
             border_radius=10,
             visible=False,
@@ -240,20 +365,20 @@ class TranslateScreen(ft.Container):
                 ]
             ),
         )
-        self.action_log_list = ft.ListView(
+        self.translation_log_list = ft.ListView(
             expand=False,
             height=160,
             spacing=4,
             auto_scroll=True,
         )
-        self.action_log_section = ft.Container(
-            padding=16,
+        self.translation_log_section = ft.Container(
+            padding=10,
             bgcolor=Colors.SURFACE,
             border_radius=10,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.icons.LIST_ALT), ft.Text("Action Log", size=15, weight=ft.FontWeight.W_600)], spacing=8),
-                    self.action_log_list,
+                    ft.Row([ft.Icon(ft.icons.LIST_ALT), ft.Text("Translation Log", size=15, weight=ft.FontWeight.W_600)], spacing=8),
+                    self.translation_log_list,
                 ],
                 spacing=8,
             ),
@@ -268,7 +393,12 @@ class TranslateScreen(ft.Container):
             disabled=True,
             on_click=self._on_translate,
         )
-        self.cancel_btn = ft.OutlinedButton("Cancel", height=50, visible=False, on_click=self._on_cancel)
+        self.cancel_btn = ft.OutlinedButton(
+            "Cancel",
+            height=50,
+            visible=False,
+            on_click=self._on_cancel,
+        )
         action_section = ft.Row([self.translate_btn, self.cancel_btn], alignment=ft.MainAxisAlignment.CENTER, spacing=16)
 
         self.content = ft.Column(
@@ -276,6 +406,8 @@ class TranslateScreen(ft.Container):
                 file_section,
                 ft.Container(height=16),
                 settings_section,
+                ft.Container(height=16),
+                advanced_section,
                 ft.Container(height=24),
                 action_section,
                 ft.Container(height=16),
@@ -283,25 +415,55 @@ class TranslateScreen(ft.Container):
                 ft.Container(height=16),
                 self.output_section,
                 ft.Container(height=16),
-                self.action_log_section,
+                self.translation_log_section,
             ],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         )
         self.expand = True
+        self._ui_log_cursor = len(get_ui_log_events())
+        self._start_ui_log_poller()
         self._log_ui_action("Translate screen ready")
 
     def _log_ui_action(self, message: str, level: int = logging.INFO) -> None:
-        timestamp = time.strftime("%H:%M:%S")
-        color = (
-            Colors.ERROR if level >= logging.ERROR else
-            Colors.WARNING if level >= logging.WARNING else
-            Colors.TEXT_SECONDARY
-        )
-        self.action_log_list.controls.append(ft.Text(f"[{timestamp}] {message}", size=12, color=color))
-        if len(self.action_log_list.controls) > 200:
-            self.action_log_list.controls = self.action_log_list.controls[-200:]
         self._logger.log(level, message)
+        self._flush_ui_log_events()
+
+    def _start_ui_log_poller(self) -> None:
+        if self._ui_log_poller_started:
+            return
+        self._ui_log_poller_started = True
+        self._page.run_task(self._poll_ui_logs)
+
+    async def _poll_ui_logs(self) -> None:
+        while True:
+            self._flush_ui_log_events()
+            await asyncio.sleep(0.8)
+
+    def _flush_ui_log_events(self) -> None:
+        events = get_ui_log_events()
+        if self._ui_log_cursor >= len(events):
+            return
+        new_events = events[self._ui_log_cursor :]
+        self._ui_log_cursor = len(events)
+        for event in new_events:
+            level_name = str(event.get("level") or "INFO")
+            timestamp = str(event.get("timestamp") or time.strftime("%H:%M:%S"))
+            message = str(event.get("message") or "")
+            color = (
+                Colors.ERROR if level_name in {"ERROR", "CRITICAL"} else
+                Colors.WARNING if level_name == "WARNING" else
+                Colors.TEXT_SECONDARY
+            )
+            self.translation_log_list.controls.append(
+                ft.Text(f"[{timestamp}] {level_name}: {message}", size=12, color=color)
+            )
+        if len(self.translation_log_list.controls) > 400:
+            self.translation_log_list.controls = self.translation_log_list.controls[-400:]
+        try:
+            self.translation_log_list.update()
+        except Exception:
+            pass
 
     def _pick_file(self, _: ft.ControlEvent) -> None:
         self._log_ui_action("Open file picker")
@@ -320,15 +482,34 @@ class TranslateScreen(ft.Container):
             self.file_name.color = Colors.TEXT_PRIMARY
             if picked_path:
                 self.file_path.value = str(Path(picked_path).parent)
+                self.file_path.visible = True
+                self._refresh_output_file_default(force=True)
                 self.translate_btn.disabled = False
                 self._log_ui_action(f"Selected file: {f.name}")
             else:
                 self.file_path.value = "No local file path available in browser mode."
+                self.file_path.visible = True
                 self.status_text.value = "Cannot access local path in browser mode; use desktop mode to translate local files."
                 self.status_text.color = Colors.WARNING
                 self.translate_btn.disabled = True
                 self._log_ui_action("File selected without local path (browser mode)", logging.WARNING)
             self._page.update()
+
+    def _on_target_language_change(self, _: ft.ControlEvent) -> None:
+        """Keep output-file default synced with selected target language."""
+        self._refresh_output_file_default()
+        self._page.update()
+
+    def _toggle_advanced_config(self, _: ft.ControlEvent) -> None:
+        self._advanced_expanded = not self._advanced_expanded
+        self.advanced_controls.visible = self._advanced_expanded
+        self.advanced_toggle_btn.icon = (
+            ft.icons.EXPAND_LESS if self._advanced_expanded else ft.icons.EXPAND_MORE
+        )
+        self.advanced_toggle_btn.tooltip = (
+            "Collapse advanced config" if self._advanced_expanded else "Expand advanced config"
+        )
+        self._page.update()
 
     def _on_glossary_picked(self, e: ft.FilePickerResultEvent) -> None:
         if e.files and len(e.files) > 0:
@@ -348,6 +529,23 @@ class TranslateScreen(ft.Container):
         self.model_dropdown.value = models[0] if models else None
         self._page.update()
 
+    def _build_default_output_path(self, input_file: str, target_lang: str) -> str:
+        source = Path(input_file)
+        # Keep source extension and output in the same folder by default.
+        return str(source.parent / f"{source.stem}-{target_lang}{source.suffix}")
+
+    def _refresh_output_file_default(self, *, force: bool = False) -> None:
+        if not self._selected_file:
+            return
+        current_value = (self.output_file_field.value or "").strip()
+        if force or not current_value:
+            target_lang = self.target_language_dropdown.value or "vi"
+            self.output_file_field.value = self._build_default_output_path(self._selected_file, target_lang)
+
+    def _on_reset_output_default(self, _: ft.ControlEvent) -> None:
+        self._refresh_output_file_default(force=True)
+        self._page.update()
+
     def _parse_optional_int(self, value: str, field_name: str) -> Optional[int]:
         if not value.strip():
             return None
@@ -355,6 +553,34 @@ class TranslateScreen(ft.Container):
             return int(value.strip())
         except ValueError as exc:
             raise ValueError(f"{field_name} must be an integer") from exc
+
+    def _load_cache_settings(self) -> dict[str, object]:
+        """Load cache-related runtime options from Settings (client storage)."""
+        cache_scope = "global"
+        cache_path = DEFAULT_GLOBAL_CACHE_PATH
+        no_cache = False
+        clear_cache = False
+        try:
+            scope_stored = self._page.client_storage.get(UI_CACHE_SCOPE_KEY)
+            path_stored = self._page.client_storage.get(UI_CACHE_PATH_KEY)
+            no_cache_stored = self._page.client_storage.get(UI_NO_CACHE_KEY)
+            clear_cache_stored = self._page.client_storage.get(UI_CLEAR_CACHE_KEY)
+            if scope_stored in ("global", "per-ebook", "disabled"):
+                cache_scope = str(scope_stored)
+            if isinstance(path_stored, str) and path_stored.strip():
+                cache_path = path_stored.strip()
+            if isinstance(no_cache_stored, bool):
+                no_cache = no_cache_stored
+            if isinstance(clear_cache_stored, bool):
+                clear_cache = clear_cache_stored
+        except Exception:
+            pass
+        return {
+            "cache_scope": cache_scope,
+            "cache_path": cache_path,
+            "no_cache": no_cache,
+            "clear_cache": clear_cache,
+        }
 
     def _on_translate(self, _: ft.ControlEvent) -> None:
         if not self._selected_file or self._is_translating:
@@ -410,8 +636,8 @@ class TranslateScreen(ft.Container):
         self.target_language_dropdown.disabled = translating
         self.source_language_dropdown.disabled = translating
         self.mode_dropdown.disabled = translating
-        self.cache_scope_dropdown.disabled = translating
-        self.cache_path_field.disabled = translating
+        self.output_file_field.disabled = translating
+        self.output_reset_btn.disabled = translating
         self.select_btn.disabled = translating
         self.report_path_field.disabled = translating
         self._page.update()
@@ -433,12 +659,14 @@ class TranslateScreen(ft.Container):
         return provider
 
     def _build_output_path(self, input_file: str, target_lang: str) -> str:
-        source = Path(input_file)
-        output_dir_env = os.getenv("LEXORA_UI_OUTPUT_DIR")
-        output_dir = Path(output_dir_env) if output_dir_env else source.parent
-        output_dir.mkdir(parents=True, exist_ok=True)
-        ext = ".md" if source.suffix.lower() == ".md" else ".txt"
-        return str(output_dir / f"{source.stem}_{target_lang}{ext}")
+        override = (self.output_file_field.value or "").strip()
+        if override:
+            output_path = Path(override)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            return str(output_path)
+        default_path = Path(self._build_default_output_path(input_file, target_lang))
+        default_path.parent.mkdir(parents=True, exist_ok=True)
+        return str(default_path)
 
     def _run_translation(self, job_id: int, provider_label: str, model_name: str, target_lang: str) -> None:
         started_at = time.perf_counter()
@@ -449,7 +677,7 @@ class TranslateScreen(ft.Container):
             "target_language": target_lang,
             "source_language": None if self.source_language_dropdown.value == "auto" else self.source_language_dropdown.value,
             "mode": self.mode_dropdown.value,
-            "cache_scope": self.cache_scope_dropdown.value,
+            "cache_scope": "global",
             "dry_run": False,
         }
         try:
@@ -487,6 +715,13 @@ class TranslateScreen(ft.Container):
             if structured_max_chars < 2000:
                 raise ValueError("--structured-epub-batch-max-chars must be >= 2000")
 
+            cache_settings = self._load_cache_settings()
+            cache_scope = str(cache_settings["cache_scope"])
+            cache_path_value = str(cache_settings["cache_path"])
+            no_cache = bool(cache_settings["no_cache"])
+            clear_cache = bool(cache_settings["clear_cache"])
+            report_payload["cache_scope"] = cache_scope
+
             run_params = {
                 "input_file": self._selected_file,
                 "provider_label": provider_label,
@@ -495,10 +730,10 @@ class TranslateScreen(ft.Container):
                 "source_language": None if self.source_language_dropdown.value == "auto" else self.source_language_dropdown.value,
                 "mode": self.mode_dropdown.value or "replace",
                 "glossary_path": self._selected_glossary or "",
-                "cache_scope": self.cache_scope_dropdown.value or "global",
-                "cache_path": self.cache_path_field.value or DEFAULT_GLOBAL_CACHE_PATH,
-                "no_cache": bool(self.no_cache_switch.value),
-                "clear_cache": bool(self.clear_cache_switch.value),
+                "cache_scope": cache_scope,
+                "cache_path": cache_path_value,
+                "no_cache": no_cache,
+                "clear_cache": clear_cache,
                 "limit_docs": limit_docs,
                 "start_doc": start_doc,
                 "end_doc": end_doc,
@@ -514,15 +749,19 @@ class TranslateScreen(ft.Container):
             glossary = _load_glossary(self._selected_glossary or "")
             cache_path = _resolve_cache_path(
                 input_file=self._selected_file,
-                cache_scope=self.cache_scope_dropdown.value or "global",
-                cache_path=self.cache_path_field.value or DEFAULT_GLOBAL_CACHE_PATH,
-                no_cache=bool(self.no_cache_switch.value),
+                cache_scope=cache_scope,
+                cache_path=cache_path_value,
+                no_cache=no_cache,
             )
-            if self.clear_cache_switch.value:
+            if clear_cache:
                 self.status_text.value = _clear_cache_file(cache_path)
                 self.status_text.color = Colors.WARNING
                 self._log_ui_action(self.status_text.value, logging.WARNING)
                 self._page.update()
+                try:
+                    self._page.client_storage.set(UI_CLEAR_CACHE_KEY, False)
+                except Exception:
+                    pass
 
             provider = self._build_provider(provider_label, model_name)
             translator = Translator(provider=provider)
@@ -614,8 +853,8 @@ class TranslateScreen(ft.Container):
                 self.target_language_dropdown.disabled = False
                 self.source_language_dropdown.disabled = False
                 self.mode_dropdown.disabled = False
-                self.cache_scope_dropdown.disabled = False
-                self.cache_path_field.disabled = False
+                self.output_file_field.disabled = False
+                self.output_reset_btn.disabled = False
                 self.select_btn.disabled = False
                 self.report_path_field.disabled = False
                 self._page.update()

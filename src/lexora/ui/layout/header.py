@@ -63,17 +63,6 @@ class Header(ft.Container):
             spacing=2,
         )
 
-        if self._workspace_hint:
-            title_col.controls.insert(
-                0,
-                ft.Text(
-                    self._workspace_hint,
-                    size=11,
-                    weight=ft.FontWeight.W_500,
-                    color=Colors.TEXT_SECONDARY,
-                ),
-            )
-
         self.search_field = ft.TextField(
             hint_text=self._get_text("header.search_hint"),
             prefix_icon=ft.icons.SEARCH,
@@ -85,13 +74,6 @@ class Header(ft.Container):
             border_color=Colors.BORDER,
             focused_border_color=Colors.PRIMARY,
             visible=self._show_search,
-        )
-
-        self.new_project_btn = ft.OutlinedButton(
-            text=self._get_text("common.new_project"),
-            icon=ft.icons.CREATE_NEW_FOLDER_OUTLINED,
-            visible=self._on_new_project is not None,
-            on_click=self._on_new_project,
         )
 
         self.new_translation_btn = ft.ElevatedButton(
@@ -124,32 +106,13 @@ class Header(ft.Container):
             tooltip="Account",
         )
 
-        quick_row = ft.Row(
-            [
-                self.new_project_btn,
-                self.new_translation_btn,
-            ],
-            spacing=8,
-        )
-
-        title_block = ft.Column(
-            [quick_row, title_col],
-            spacing=8,
-            tight=True,
-        )
-
         self.content = ft.Column(
             [
                 ft.Row(
                     controls=[
-                        title_block,
-                        ft.Container(width=16),
-                        ft.Container(
-                            content=self.search_field,
-                            width=280,
-                            visible=self._show_search,
-                        ),
+                        title_col,
                         ft.Container(expand=True),
+                        self.new_translation_btn,
                         self.theme_btn,
                         self.notification_btn,
                         self.user_btn,
@@ -162,7 +125,7 @@ class Header(ft.Container):
         )
 
         self.padding = ft.padding.symmetric(horizontal=24, vertical=14)
-        self.bgcolor = Colors.BACKGROUND
+        self.bgcolor = Colors.SURFACE_VARIANT
         self.border = ft.border.only(bottom=ft.BorderSide(1, Colors.BORDER))
 
     def set_theme_icon(self, icon: str) -> None:
@@ -180,7 +143,6 @@ class Header(ft.Container):
         """Refresh labels after locale change."""
         self._get_text = get_text
         self.search_field.hint_text = get_text("header.search_hint")
-        self.new_project_btn.text = get_text("common.new_project")
         self.new_translation_btn.text = get_text("common.new_translation")
         self.set_title(title, subtitle)
 
@@ -195,7 +157,7 @@ class Header(ft.Container):
         self.theme_btn.icon_color = Colors.TEXT_SECONDARY
         self.notification_btn.icon_color = Colors.TEXT_SECONDARY
         self.user_btn.icon_color = Colors.TEXT_SECONDARY
-        self.bgcolor = Colors.BACKGROUND
+        self.bgcolor = Colors.SURFACE_VARIANT
         self.border = ft.border.only(bottom=ft.BorderSide(1, Colors.BORDER))
         self.new_translation_btn.bgcolor = Colors.PRIMARY
 

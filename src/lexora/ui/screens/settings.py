@@ -13,6 +13,7 @@ from typing import Callable, Dict, Optional
 
 import os
 
+from lexora.cli import DEFAULT_GLOBAL_CACHE_PATH
 from lexora.ui.i18n import translate
 from lexora.ui.theme import Colors
 
@@ -47,6 +48,11 @@ PROVIDERS_CONFIG = {
     },
 }
 
+UI_CACHE_SCOPE_KEY = "lexora_ui_cache_scope"
+UI_CACHE_PATH_KEY = "lexora_ui_cache_path"
+UI_NO_CACHE_KEY = "lexora_ui_no_cache"
+UI_CLEAR_CACHE_KEY = "lexora_ui_clear_cache"
+
 
 class SettingsScreen(ft.Container):
     """Settings screen with configuration options."""
@@ -66,7 +72,13 @@ class SettingsScreen(ft.Container):
 
     def _build(self):
         """Build the settings UI."""
-        
+        cache_scope_value = self._get_storage_value(UI_CACHE_SCOPE_KEY, "global")
+        if cache_scope_value not in ("global", "per-ebook", "disabled"):
+            cache_scope_value = "global"
+        cache_path_value = self._get_storage_value(UI_CACHE_PATH_KEY, DEFAULT_GLOBAL_CACHE_PATH)
+        no_cache_value = bool(self._get_storage_value(UI_NO_CACHE_KEY, False))
+        clear_cache_value = bool(self._get_storage_value(UI_CLEAR_CACHE_KEY, False))
+
         # Provider Settings Section
         provider_cards = []
         for name, config in PROVIDERS_CONFIG.items():
@@ -156,7 +168,27 @@ class SettingsScreen(ft.Container):
         )
         
         self.bilingual_switch = ft.Switch(value=True, active_color=Colors.PRIMARY)
-        self.cache_switch = ft.Switch(value=True, active_color=Colors.PRIMARY)
+        self.cache_scope_dropdown = ft.Dropdown(
+            label="Cache Scope",
+            options=[
+                ft.dropdown.Option("global", "Global"),
+                ft.dropdown.Option("per-ebook", "Per-ebook"),
+                ft.dropdown.Option("disabled", "Disabled"),
+            ],
+            value=cache_scope_value,
+            width=220,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        self.cache_path_field = ft.TextField(
+            label="Cache Path",
+            value=str(cache_path_value),
+            width=420,
+            bgcolor=Colors.BACKGROUND,
+            border_radius=8,
+        )
+        self.no_cache_switch = ft.Switch(value=no_cache_value, active_color=Colors.PRIMARY)
+        self.clear_cache_switch = ft.Switch(value=clear_cache_value, active_color=Colors.PRIMARY)
         
         translation_section = ft.Container(
             content=ft.Column([
@@ -178,9 +210,20 @@ class SettingsScreen(ft.Container):
                 ]),
                 ft.Container(height=12),
                 ft.Row([
-                    ft.Text("Enable Cache:", size=14, color=Colors.TEXT_PRIMARY, width=150),
-                    self.cache_switch,
-                    ft.Text("Cache translations to avoid re-translating", size=13, color=Colors.TEXT_SECONDARY),
+                    self.cache_scope_dropdown,
+                    self.cache_path_field,
+                ], spacing=16, wrap=True),
+                ft.Container(height=12),
+                ft.Row([
+                    ft.Text("No cache:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    self.no_cache_switch,
+                    ft.Text("Override cache scope and disable cache usage for runs", size=13, color=Colors.TEXT_SECONDARY),
+                ]),
+                ft.Container(height=12),
+                ft.Row([
+                    ft.Text("Clear cache before run:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    self.clear_cache_switch,
+                    ft.Text("One-time clear on next run (auto-resets after execution)", size=13, color=Colors.TEXT_SECONDARY),
                 ]),
             ]),
             padding=24,
@@ -353,6 +396,13 @@ class SettingsScreen(ft.Container):
 
     def _save_settings(self, e):
         """Save all settings."""
+        try:
+            self.page.client_storage.set(UI_CACHE_SCOPE_KEY, self.cache_scope_dropdown.value or "global")
+            self.page.client_storage.set(UI_CACHE_PATH_KEY, (self.cache_path_field.value or DEFAULT_GLOBAL_CACHE_PATH).strip())
+            self.page.client_storage.set(UI_NO_CACHE_KEY, bool(self.no_cache_switch.value))
+            self.page.client_storage.set(UI_CLEAR_CACHE_KEY, bool(self.clear_cache_switch.value))
+        except Exception:
+            pass
         self._show_snackbar("Settings saved successfully!", Colors.SUCCESS)
 
     def _reset_settings(self, e):
@@ -362,7 +412,17 @@ class SettingsScreen(ft.Container):
         self.default_language.value = "vi"
         self.temperature_slider.value = 0.2
         self.bilingual_switch.value = True
-        self.cache_switch.value = True
+        self.cache_scope_dropdown.value = "global"
+        self.cache_path_field.value = DEFAULT_GLOBAL_CACHE_PATH
+        self.no_cache_switch.value = False
+        self.clear_cache_switch.value = False
+        try:
+            self.page.client_storage.set(UI_CACHE_SCOPE_KEY, "global")
+            self.page.client_storage.set(UI_CACHE_PATH_KEY, DEFAULT_GLOBAL_CACHE_PATH)
+            self.page.client_storage.set(UI_NO_CACHE_KEY, False)
+            self.page.client_storage.set(UI_CLEAR_CACHE_KEY, False)
+        except Exception:
+            pass
         self.theme_dropdown.value = "dark"
         # Reset to dark theme
         from lexora.ui.theme import apply_theme
@@ -378,3 +438,11 @@ class SettingsScreen(ft.Container):
         )
         self.page.snack_bar.open = True
         self.page.update()
+
+    def _get_storage_value(self, key: str, default):
+        """Safe read from client storage with fallback."""
+        try:
+            value = self.page.client_storage.get(key)
+            return default if value is None else value
+        except Exception:
+            return default

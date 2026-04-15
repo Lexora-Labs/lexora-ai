@@ -1,7 +1,7 @@
 """
 Sidebar Component - Navigation Rail
 
-Collapsible sidebar aligned with Lexora UI plan (8 primary destinations).
+Collapsible sidebar for primary destinations.
 """
 
 import flet as ft
@@ -9,13 +9,12 @@ from typing import Callable, List, Optional
 
 from lexora.ui.theme import Colors
 
+_RAIL_COLLAPSED_WIDTH = 80
+
 
 _DESTINATION_ICONS: list[tuple[str, str]] = [
-    (ft.icons.HOME_OUTLINED, ft.icons.HOME),
     (ft.icons.FOLDER_OUTLINED, ft.icons.FOLDER),
     (ft.icons.TRANSLATE_OUTLINED, ft.icons.TRANSLATE),
-    (ft.icons.BOOKMARKS_OUTLINED, ft.icons.BOOKMARKS),
-    (ft.icons.RATE_REVIEW_OUTLINED, ft.icons.RATE_REVIEW),
     (ft.icons.WORK_HISTORY_OUTLINED, ft.icons.WORK_HISTORY),
     (ft.icons.SETTINGS_OUTLINED, ft.icons.SETTINGS),
     (ft.icons.INFO_OUTLINED, ft.icons.INFO),
@@ -44,7 +43,7 @@ class Sidebar(ft.Container):
         self._page = page
         self.on_navigate = on_navigate
         self._selected_index = selected_index
-        self._expanded = True
+        self._expanded = False
         self._labels = labels or [""] * len(_DESTINATION_ICONS)
 
         self._build()
@@ -54,7 +53,7 @@ class Sidebar(ft.Container):
         self.nav_rail = ft.NavigationRail(
             selected_index=self._selected_index,
             label_type=ft.NavigationRailLabelType.ALL,
-            min_width=80,
+            min_width=_RAIL_COLLAPSED_WIDTH,
             min_extended_width=200,
             extended=self._expanded,
             bgcolor=Colors.SURFACE,
@@ -65,8 +64,12 @@ class Sidebar(ft.Container):
 
         self.toggle_btn = ft.IconButton(
             icon=ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU,
+            icon_size=20,
             icon_color=Colors.TEXT_SECONDARY,
             tooltip="Toggle sidebar",
+            width=36,
+            height=36,
+            style=ft.ButtonStyle(padding=0),
             on_click=self._toggle_sidebar,
         )
 
@@ -94,11 +97,19 @@ class Sidebar(ft.Container):
                 alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
+            width=_RAIL_COLLAPSED_WIDTH if not self._expanded else None,
+            alignment=ft.alignment.center,
             padding=ft.padding.symmetric(vertical=16),
         )
 
         self.top_divider = ft.Divider(height=1, color=Colors.DIVIDER)
         self.bottom_divider = ft.Divider(height=1, color=Colors.DIVIDER)
+        self.toggle_container = ft.Container(
+            content=self.toggle_btn,
+            width=_RAIL_COLLAPSED_WIDTH if not self._expanded else None,
+            alignment=ft.alignment.center,
+            padding=8,
+        )
 
         self.content = ft.Column(
             controls=[
@@ -109,11 +120,7 @@ class Sidebar(ft.Container):
                     expand=True,
                 ),
                 self.bottom_divider,
-                ft.Container(
-                    content=self.toggle_btn,
-                    alignment=ft.alignment.center,
-                    padding=8,
-                ),
+                self.toggle_container,
             ],
             spacing=0,
             expand=True,
@@ -121,6 +128,7 @@ class Sidebar(ft.Container):
 
         self.bgcolor = Colors.SURFACE
         self.border_radius = ft.border_radius.only(top_right=12, bottom_right=12)
+        self._sync_collapsed_layout()
         self._apply_theme()
 
     def set_labels(self, labels: List[str]) -> None:
@@ -155,7 +163,18 @@ class Sidebar(ft.Container):
         self.nav_rail.extended = self._expanded
         self.toggle_btn.icon = ft.icons.MENU_OPEN if self._expanded else ft.icons.MENU
         self.logo_text.visible = self._expanded
+        self._sync_collapsed_layout()
         self.update()
+
+    def _sync_collapsed_layout(self) -> None:
+        """Keep brand/toggle centered when sidebar is collapsed."""
+        self.logo.alignment = ft.alignment.center
+        self.logo.width = _RAIL_COLLAPSED_WIDTH if not self._expanded else None
+        self.logo.padding = ft.padding.symmetric(vertical=16 if self._expanded else 12)
+        self.logo_mark.size = 32 if self._expanded else 26
+        self.toggle_container.alignment = ft.alignment.center
+        self.toggle_container.width = _RAIL_COLLAPSED_WIDTH if not self._expanded else None
+        self.toggle_container.padding = ft.padding.symmetric(vertical=8 if self._expanded else 6)
 
     def set_selected(self, index: int) -> None:
         """Set selected navigation index."""
