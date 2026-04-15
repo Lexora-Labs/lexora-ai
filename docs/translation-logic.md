@@ -25,11 +25,15 @@ This document describes the current canonical translation logic in `lexora-ai`.
 
 1. Parse EPUB document items (`ITEM_DOCUMENT`) via `ebooklib`.
 2. Parse each XHTML document with BeautifulSoup (`lxml-xml`).
-3. Collect translatable text nodes only (skip `script`, `style`, `code`, `pre`).
+3. Collect translatable text nodes only (skip `script`, `style`, `code`, `pre`, and any string whose parent is the BeautifulSoup document root — `lxml-xml` can otherwise expose a spurious `"html"` text node that corrupts XHTML if replaced).
 4. Apply sentence-aware safe chunking for long node text.
-5. Translate chunks through `provider.translate_batch(...)`.
+5. Translate **uncached** chunks:
+  - **Default:** `provider.translate_batch(...)` per chunk (or batched lists as implemented by the provider).
+  - **Optional (`--structured-epub-batch`):** pack multiple chunks into one JSON request/response via `provider.translate_structured_batch(...)` when the provider reports `supports_structured_batch()` (OpenAI, Azure AI Foundry, Gemini). Incompatible with `--chunk-context-window` > 0. On parse/validation failure, the pipeline splits batches and falls back to `translate_batch` for failing items.
 6. Reassemble translated chunks back to the original node order.
 7. Replace DOM text nodes and repack EPUB.
+
+Structured EPUB mode uses fingerprint `pipeline_version=epub-structured-json-v1` and `chunking_version=sentence-aware-structured-v1` so cache entries do not collide with the default EPUB path.
 
 ## Why Chunking Exists
 
@@ -80,6 +84,8 @@ To reduce repeated translation cost and speed up reruns, the pipeline uses a res
 - `--report-path`: write machine-readable JSON run report.
 - `--chunk-size`: control sentence-aware chunk sizing.
 - `--chunk-context-window`: include neighbor chunks as context (target-only output).
+- `--structured-epub-batch`: EPUB only; JSON multi-item structured batches (supported providers only).
+- `--structured-epub-batch-max-chars`: approximate max source characters per structured batch (default 8000, minimum 2000).
 
 ## Runtime Contract
 

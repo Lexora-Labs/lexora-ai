@@ -71,6 +71,10 @@ class EpubReader(FileReader):
                 continue
             if not text_node.strip():
                 continue
+            # lxml-xml can surface a spurious document-level string (e.g. "html") whose
+            # parent is the BeautifulSoup root; translating/replacing it corrupts XHTML.
+            if text_node.parent is soup:
+                continue
             if self._is_in_skipped_context(text_node):
                 continue
             nodes.append(text_node)

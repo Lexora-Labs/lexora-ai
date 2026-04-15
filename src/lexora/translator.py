@@ -3,7 +3,7 @@
 import hashlib
 import logging
 import time
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
 from ebooklib import epub
 
@@ -20,6 +20,7 @@ from .core import (
 )
 from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
+from .core.structured_batch import StructuredBatchItem, pack_items_by_char_budget
 
 
 class Translator:
@@ -93,6 +94,8 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
+        structured_epub_batch: bool = False,
+        structured_epub_batch_max_chars: int = 8000,
     ) -> TranslationResult:
         """
         Translate a file to the target language.
@@ -110,6 +113,8 @@ class Translator:
             end_doc: Optional 1-based end index (inclusive) of EPUB document selection
             chunk_size: Max chars for sentence-aware chunking (EPUB path)
             chunk_context_window: Number of neighbor chunks on each side for context
+            structured_epub_batch: Use JSON multi-item batches for uncached EPUB chunks (GPT providers)
+            structured_epub_batch_max_chars: Approx max source chars per structured batch (EPUB path)
         """
         # Check if input file exists
         input_path = Path(input_file)
@@ -132,6 +137,8 @@ class Translator:
                 end_doc=end_doc,
                 chunk_size=chunk_size,
                 chunk_context_window=chunk_context_window,
+                structured_epub_batch=structured_epub_batch,
+                structured_epub_batch_max_chars=structured_epub_batch_max_chars,
             )
 
         # Read the file
@@ -195,8 +202,26 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
+        structured_epub_batch: bool = False,
+        structured_epub_batch_max_chars: int = 8000,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
+        use_structured = (
+            structured_epub_batch
+            and chunk_context_window <= 0
+            and self.provider.supports_structured_batch()
+        )
+        if structured_epub_batch and chunk_context_window > 0:
+            raise ValueError(
+                "structured_epub_batch cannot be used with chunk_context_window > 0"
+            )
+        if structured_epub_batch and not self.provider.supports_structured_batch():
+            self._log_event(
+                logging.WARNING,
+                "translation.epub.structured_batch.unsupported_provider",
+                provider=self.provider.provider_name,
+            )
+
         self._log_event(
             logging.INFO,
             "translation.epub.read.started",
@@ -229,7 +254,9 @@ class Translator:
 
         cache = TranslationCache(cache_path) if cache_path else None
         cache_stats_before = cache.stats() if cache else None
-        cache_fingerprint = self._build_cache_fingerprint(config)
+        cache_fingerprint = self._build_cache_fingerprint(
+            config, structured_epub_batch=use_structured
+        )
         started_at = time.perf_counter()
 
         total_nodes = 0
@@ -237,6 +264,14 @@ class Translator:
         total_cache_hits = 0
         total_cache_misses = 0
         translated_docs = 0
+
+        structured_stats: Dict[str, Any] = {
+            "structured_batch_enabled": bool(use_structured),
+            "structured_batches_total": 0,
+            "structured_items_total": 0,
+            "structured_validation_failures": 0,
+            "structured_fallback_batches": 0,
+        }
 
         self._log_event(
             logging.INFO,
@@ -319,20 +354,25 @@ class Translator:
                     provider=self.provider.provider_name,
                     chunks=len(uncached_texts),
                 )
-                batch_results = self._translate_uncached_chunks(
+                batch_results, batch_token_usage = self._translate_uncached_chunks(
                     chunked_texts=chunked_texts,
                     uncached_indices=uncached_indices,
                     uncached_texts=uncached_texts,
                     config=config,
                     context_window=chunk_context_window,
+                    structured_epub_batch=use_structured,
+                    structured_epub_batch_max_chars=structured_epub_batch_max_chars,
+                    doc_index=doc_index,
+                    structured_stats=structured_stats,
                 )
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    token_usage[key] += batch_token_usage.get(key, 0)
 
             for result_index, chunk_index in enumerate(uncached_indices):
                 source_chunk = chunked_texts[chunk_index]
                 result = batch_results[result_index] if result_index < len(batch_results) else None
                 translated_chunk = result.translated_content if result else source_chunk
                 translated_chunks[chunk_index] = translated_chunk
-                self._accumulate_token_usage(token_usage, result)
                 if cache is not None:
                     cache.put(source_chunk, cache_fingerprint, translated_chunk)
 
@@ -404,6 +444,7 @@ class Translator:
                 "chunk_size": chunk_size,
                 "chunk_context_window": chunk_context_window,
                 "elapsed_ms": int(total_elapsed * 1000),
+                **structured_stats,
             },
         )
 
@@ -444,10 +485,32 @@ class Translator:
         uncached_texts: List[str],
         config: TranslationConfig,
         context_window: int,
-    ) -> List[TranslationResult]:
-        """Translate uncached chunks with optional neighbor context windows."""
+        *,
+        structured_epub_batch: bool = False,
+        structured_epub_batch_max_chars: int = 8000,
+        doc_index: int = 0,
+        structured_stats: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[TranslationResult], Dict[str, int]]:
+        """Translate uncached chunks with optional neighbor context or structured JSON batches."""
+        empty_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        if structured_epub_batch and context_window <= 0:
+            results, usage = self._translate_uncached_chunks_structured_json(
+                chunked_texts=chunked_texts,
+                uncached_indices=uncached_indices,
+                config=config,
+                doc_index=doc_index,
+                max_payload_chars=structured_epub_batch_max_chars,
+                structured_stats=structured_stats or {},
+            )
+            return results, usage
+
         if context_window <= 0:
-            return self.provider.translate_batch(uncached_texts, config)
+            results = self.provider.translate_batch(uncached_texts, config)
+            usage = dict(empty_usage)
+            if results:
+                self._accumulate_token_usage(usage, results[-1])
+            return results, usage
 
         results: List[TranslationResult] = []
         for index, chunk_index in enumerate(uncached_indices):
@@ -502,7 +565,136 @@ class Translator:
                     index + 1,
                     len(uncached_indices),
                 )
-        return results
+        usage = dict(empty_usage)
+        for result in results:
+            self._accumulate_token_usage(usage, result)
+        return results, usage
+
+    def _chunk_lex_id(self, doc_index: int, chunk_index: int) -> str:
+        return f"lx:{doc_index:04d}:{chunk_index:06d}"
+
+    def _translate_uncached_chunks_structured_json(
+        self,
+        *,
+        chunked_texts: List[str],
+        uncached_indices: List[int],
+        config: TranslationConfig,
+        doc_index: int,
+        max_payload_chars: int,
+        structured_stats: Dict[str, Any],
+    ) -> Tuple[List[TranslationResult], Dict[str, int]]:
+        """Pack uncached chunks into JSON batches; fallback to translate_batch on failure."""
+        items: List[StructuredBatchItem] = []
+        for chunk_index in uncached_indices:
+            prev_t = chunked_texts[chunk_index - 1] if chunk_index > 0 else ""
+            next_t = (
+                chunked_texts[chunk_index + 1]
+                if chunk_index + 1 < len(chunked_texts)
+                else ""
+            )
+            ctx_before = (prev_t[-120:] if prev_t else "") or None
+            ctx_after = (next_t[:120] if next_t else "") or None
+            items.append(
+                StructuredBatchItem(
+                    id=self._chunk_lex_id(doc_index, chunk_index),
+                    text=chunked_texts[chunk_index],
+                    context_before=ctx_before,
+                    context_after=ctx_after,
+                )
+            )
+
+        batches = pack_items_by_char_budget(items, max_payload_chars)
+        merged: Dict[str, str] = {}
+        usage_total: Dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        batch_counter = 0
+
+        def _is_non_retryable_provider_error(exc: BaseException) -> bool:
+            """Do not split/fallback on quota or transport errors (avoids request amplification)."""
+            name = type(exc).__name__
+            if name in (
+                "RateLimitError",
+                "APIConnectionError",
+                "APITimeoutError",
+                "AuthenticationError",
+                "PermissionDeniedError",
+            ):
+                return True
+            msg = str(exc).lower()
+            if "insufficient_quota" in msg or "429" in msg:
+                return True
+            if "quota" in msg and "billing" in msg:
+                return True
+            return False
+
+        def process_batch(batch: List[StructuredBatchItem]) -> None:
+            nonlocal batch_counter
+            if not batch:
+                return
+            bid = f"d{doc_index:04d}b{batch_counter}"
+            batch_counter += 1
+            try:
+                mapping, usage = self.provider.translate_structured_batch(
+                    batch,
+                    batch_id=bid,
+                    config=config,
+                )
+                merged.update(mapping)
+                for key in usage_total:
+                    usage_total[key] += usage.get(key, 0)
+                structured_stats["structured_batches_total"] = int(
+                    structured_stats.get("structured_batches_total", 0) or 0
+                ) + 1
+                structured_stats["structured_items_total"] = int(
+                    structured_stats.get("structured_items_total", 0) or 0
+                ) + len(batch)
+            except Exception as exc:
+                if _is_non_retryable_provider_error(exc):
+                    raise
+                if len(batch) > 1:
+                    mid = len(batch) // 2
+                    process_batch(batch[:mid])
+                    process_batch(batch[mid:])
+                else:
+                    structured_stats["structured_fallback_batches"] = int(
+                        structured_stats.get("structured_fallback_batches", 0) or 0
+                    ) + 1
+                    structured_stats["structured_validation_failures"] = int(
+                        structured_stats.get("structured_validation_failures", 0) or 0
+                    ) + 1
+                    one = batch[0]
+                    sub = self.provider.translate_batch([one.text], config)
+                    merged[one.id] = (
+                        sub[0].translated_content if sub else one.text
+                    ) or one.text
+                    if sub:
+                        u: Dict[str, int] = {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0,
+                        }
+                        self._accumulate_token_usage(u, sub[-1])
+                        for key in usage_total:
+                            usage_total[key] += u.get(key, 0)
+
+        for batch in batches:
+            process_batch(batch)
+
+        results: List[TranslationResult] = []
+        for chunk_index in uncached_indices:
+            tid = self._chunk_lex_id(doc_index, chunk_index)
+            translated = merged.get(tid, chunked_texts[chunk_index])
+            results.append(
+                TranslationResult(
+                    translated_content=translated,
+                    bilingual_ast=None,
+                    token_usage={},
+                )
+            )
+        return results, usage_total
 
     def _select_epub_docs(
         self,
@@ -542,7 +734,12 @@ class Translator:
 
         return selected_docs
 
-    def _build_cache_fingerprint(self, config: TranslationConfig) -> CacheFingerprint:
+    def _build_cache_fingerprint(
+        self,
+        config: TranslationConfig,
+        *,
+        structured_epub_batch: bool = False,
+    ) -> CacheFingerprint:
         """Build a robust cache fingerprint for translation behavior."""
         model = (
             getattr(self.provider, "_model", None)
@@ -560,8 +757,16 @@ class Translator:
             provider_model=str(model),
             glossary_hash=hash_glossary(config.glossary),
             instruction_hash=instruction_hash,
-            chunking_version="sentence-aware-v1",
-            pipeline_version="epub-node-v1",
+            chunking_version=(
+                "sentence-aware-structured-v1"
+                if structured_epub_batch
+                else "sentence-aware-v1"
+            ),
+            pipeline_version=(
+                "epub-structured-json-v1"
+                if structured_epub_batch
+                else "epub-node-v1"
+            ),
         )
 
     def _make_epub_node_id(self, item_name: str, index: int, text: str) -> str:

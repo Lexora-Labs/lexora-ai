@@ -122,25 +122,25 @@ Google's Gemini models via Google AI Studio.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GOOGLE_API_KEY` | ✅ | Google AI API key |
+| `GEMINI_MODEL` | optional | Model id (default `gemini-2.0-flash`; alias `GOOGLE_GEMINI_MODEL`) |
 
-**Supported Models:**
-- `gemini-1.5-pro` (default)
-- `gemini-1.5-flash`
-- `gemini-pro`
+**Models:** Google retires API ids over time; if you see `404 NOT_FOUND` for a model name, set `GEMINI_MODEL` to a current id from [Gemini models](https://ai.google.dev/gemini-api/docs/models) (for example `gemini-2.5-flash` or `gemini-2.5-pro`).
 
 ```python
 from lexora.providers import GeminiProvider
 
 provider = GeminiProvider(
-    api_key="...",           # or use GOOGLE_API_KEY env
-    model="gemini-1.5-pro",  # default
+    api_key="...",              # or use GOOGLE_API_KEY env
+    model="gemini-2.0-flash",   # or omit to use GEMINI_MODEL / default
     temperature=0.2,
 )
 ```
 
+**EPUB structured JSON batches:** `GeminiProvider.supports_structured_batch()` is true. With `--structured-epub-batch`, the same multi-item JSON contract as OpenAI/Azure is used (`response_mime_type=application/json` plus a response schema in the Google Gen AI SDK).
+
 **Install SDK:**
 ```bash
-pip install google-generativeai
+pip install google-genai
 ```
 
 ---

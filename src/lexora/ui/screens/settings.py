@@ -30,8 +30,8 @@ PROVIDERS_CONFIG = {
     },
     "Gemini": {
         "env_var": "GOOGLE_API_KEY",
-        "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"],
-        "default_model": "gemini-1.5-pro",
+        "models": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
+        "default_model": "gemini-2.0-flash",
     },
     "Anthropic": {
         "env_var": "ANTHROPIC_API_KEY",

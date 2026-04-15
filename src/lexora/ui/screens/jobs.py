@@ -42,7 +42,7 @@ class Job:
 MOCK_JOBS: List[Job] = [
     Job("1", "Refactoring.epub", "OpenAI", "gpt-4o", "vi", JobStatus.IN_PROGRESS, 0.45, "2024-04-06 10:30"),
     Job("2", "Clean Architecture.epub", "OpenAI", "gpt-4o", "vi", JobStatus.QUEUED, 0.0, "2024-04-06 10:25"),
-    Job("3", "Test-Driven Development.epub", "Gemini", "gemini-1.5-pro", "ja", JobStatus.QUEUED, 0.0, "2024-04-06 10:20"),
+    Job("3", "Test-Driven Development.epub", "Gemini", "gemini-2.0-flash", "ja", JobStatus.QUEUED, 0.0, "2024-04-06 10:20"),
     Job("4", "Clean Code.epub", "OpenAI", "gpt-4o", "vi", JobStatus.COMPLETED, 1.0, "2024-04-05 14:00", "2024-04-05 15:30"),
     Job("5", "Design Patterns.epub", "OpenAI", "gpt-4", "vi", JobStatus.COMPLETED, 1.0, "2024-04-04 09:00", "2024-04-04 11:00"),
     Job("6", "Microservices.epub", "Azure OpenAI", "gpt-4", "zh", JobStatus.FAILED, 0.32, "2024-04-03 16:00", error="API rate limit exceeded"),

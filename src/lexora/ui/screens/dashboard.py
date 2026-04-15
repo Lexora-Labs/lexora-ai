@@ -128,7 +128,7 @@ class DashboardScreen(ft.Container):
                 ft.Container(height=12),
                 self._provider_status("OpenAI", "gpt-4o", True),
                 self._provider_status("Azure OpenAI", "gpt-4", False),
-                self._provider_status("Gemini", "gemini-1.5-pro", True),
+                self._provider_status("Gemini", "gemini-2.0-flash", True),
             ]),
             padding=20,
             bgcolor=Colors.SURFACE,

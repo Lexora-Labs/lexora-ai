@@ -8,7 +8,7 @@ import os
 import time
 import hashlib
 import logging
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 from lexora.core.base_translator import (
     BaseTranslator,
@@ -16,6 +16,12 @@ from lexora.core.base_translator import (
     TranslationResult,
     BilingualAST,
     BilingualNode,
+)
+from lexora.core.structured_batch import (
+    StructuredBatchItem,
+    build_structured_batch_user_payload,
+    parse_structured_batch_response,
+    validate_and_extract_translations,
 )
 
 try:
@@ -68,6 +74,9 @@ class OpenAIProvider(BaseTranslator):
     @property
     def provider_name(self) -> str:
         return "openai"
+
+    def supports_structured_batch(self) -> bool:
+        return True
 
     def is_configured(self) -> bool:
         return bool(self._api_key)
@@ -133,6 +142,87 @@ class OpenAIProvider(BaseTranslator):
             results.append(result)
         
         return results
+
+    def _structured_system_message(self, config: TranslationConfig) -> str:
+        base = self.get_system_instruction(config)
+        return (
+            f"{base}\n\n"
+            "You receive JSON describing translation items. "
+            'Respond with a single JSON object only, shape: '
+            '{"items":[{"id":"<same as input id>","translated_text":"<translation>"}]} '
+            "with exactly one entry per input item, identical ids, no markdown fences, no commentary."
+        )
+
+    def translate_structured_batch(
+        self,
+        items: List[StructuredBatchItem],
+        *,
+        batch_id: str,
+        config: TranslationConfig,
+    ) -> Tuple[Dict[str, str], Dict[str, int]]:
+        if not items:
+            return {}, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        client = self._get_client()
+        user_body = build_structured_batch_user_payload(
+            source_lang=config.source_language,
+            target_lang=config.target_language,
+            batch_id=batch_id,
+            items=items,
+        )
+        system_msg = self._structured_system_message(config)
+        usage: Dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        expected_ids = [it.id for it in items]
+        source_by_id = {it.id: it.text for it in items}
+
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            user_content = user_body
+            if attempt == 1:
+                user_content = (
+                    user_body
+                    + "\n\nYour previous reply was invalid. Output only valid JSON matching "
+                    'the contract: {"items":[{"id":"...","translated_text":"..."}]} '
+                    "with the same ids as the input items."
+                )
+            try:
+                response = client.chat.completions.create(
+                    model=self._model,
+                    temperature=self._temperature,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_content},
+                    ],
+                )
+                raw = (response.choices[0].message.content or "").strip()
+                if response.usage:
+                    usage["prompt_tokens"] = response.usage.prompt_tokens or 0
+                    usage["completion_tokens"] = response.usage.completion_tokens or 0
+                    usage["total_tokens"] = response.usage.total_tokens or 0
+
+                parsed = parse_structured_batch_response(raw)
+                out = validate_and_extract_translations(
+                    expected_ids=expected_ids,
+                    parsed=parsed,
+                    source_by_id=source_by_id,
+                )
+                return out, usage
+            except Exception as exc:
+                last_error = exc
+                if self._debug:
+                    self._logger.debug(
+                        "provider.structured_batch.retry provider=openai batch_id=%s attempt=%s",
+                        batch_id,
+                        attempt + 1,
+                    )
+
+        assert last_error is not None
+        raise last_error
 
     def _call_api_with_retry(
         self,
