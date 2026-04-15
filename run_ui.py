@@ -99,7 +99,7 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
 PROVIDERS = {
     "OpenAI": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4"],
     "Azure OpenAI": ["gpt-4o", "gpt-4", "gpt-35-turbo"],
-    "Gemini": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"],
+    "Gemini": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
     "Anthropic": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"],
     "Qwen": ["qwen-max", "qwen-plus", "qwen-turbo"],
 }

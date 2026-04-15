@@ -60,15 +60,17 @@ The framework follows the same generic structure used by Winston-style systems:
 
 Winston-to-Lexora mapping:
 
-| Winston concept | Lexora plan |
-|---|---|
-| `createLogger(...)` | Centralized logger bootstrap module |
-| `level` | `LEXORA_LOG_LEVEL` |
-| `format.combine(...)` | Shared formatter + structured event contract |
-| `transports.Console` | `console` sink |
-| `transports.File` | `file` sink with rotation |
-| Cloud transports/plugins | `azure` and `aws` sinks |
-| Custom transport | `ui` sink for desktop rendering |
+
+| Winston concept          | Lexora plan                                  |
+| ------------------------ | -------------------------------------------- |
+| `createLogger(...)`      | Centralized logger bootstrap module          |
+| `level`                  | `LEXORA_LOG_LEVEL`                           |
+| `format.combine(...)`    | Shared formatter + structured event contract |
+| `transports.Console`     | `console` sink                               |
+| `transports.File`        | `file` sink with rotation                    |
+| Cloud transports/plugins | `azure` and `aws` sinks                      |
+| Custom transport         | `ui` sink for desktop rendering              |
+
 
 ## Configuration Model
 
@@ -97,11 +99,11 @@ Core dependency policy:
 Planned optional packages:
 
 1. Azure sink:
-	- current implementation: `opencensus-ext-azure`
-	- future migration target: `azure-monitor-opentelemetry`
+  current implementation: `opencensus-ext-azure`
+   future migration target: `azure-monitor-opentelemetry`
 2. AWS sink:
-	- `watchtower`
-	- `boto3`
+  `watchtower`
+   `boto3`
 
 Fallback rule:
 
@@ -128,11 +130,11 @@ Token formats:
 Recommended variants:
 
 1. Combined app log:
-	- `lexora-%DATE%.log`
+  `lexora-%DATE%.log`
 2. Error-only log:
-	- `lexora-error-%DATE%.log`
+  `lexora-error-%DATE%.log`
 3. Optional provider-segmented log:
-	- `lexora-{provider}-%DATE%.log`
+  `lexora-{provider}-%DATE%.log`
 
 Examples:
 
@@ -177,14 +179,14 @@ Common fields expected on operational events:
 Level usage contract:
 
 1. `DEBUG`
-	- provider request/response metadata (no secrets)
-	- detailed chunk-level diagnostics
+  provider request/response metadata (no secrets)
+   detailed chunk-level diagnostics
 2. `INFO`
-	- run start/end, doc progress, cache summary
+  run start/end, doc progress, cache summary
 3. `WARNING`
-	- recoverable sink/config/dependency issues
+  recoverable sink/config/dependency issues
 4. `ERROR`
-	- non-recoverable failures that stop current operation
+  non-recoverable failures that stop current operation
 
 Security rule:
 

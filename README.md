@@ -13,6 +13,7 @@ Lexora AI is an open-source, AI-powered eBook translation tool. It enables devel
 ## Installation
 
 1. Create and activate a virtual environment (recommended):
+
 ```bash
 python -m venv .venv
 
@@ -23,7 +24,8 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-2. Install the package in editable mode:
+1. Install the package in editable mode:
+
 ```bash
 pip install -e .
 ```
@@ -44,7 +46,7 @@ Lexora AI supports `.env` files for securely managing your configuration and API
 cp .env.example .env
 ```
 
-2. Uncomment and populate the variables for the service(s) you wish to use:
+1. Uncomment and populate the variables for the service(s) you wish to use:
 
 ```env
 # OpenAI Configuration
@@ -65,61 +67,88 @@ AZURE_AI_FOUNDRY_MODEL=your_model_name
 
 See `.env.example` for the complete list of supported providers and optional UI configurations.
 
+## Test inputs (sample EPUBs)
+
+For manual runs and regression tests, use **IDPF EPUB 3 reference samples** instead of commercial or personal books, to respect copyright and keep a clear license story.
+
+- **Catalog:** [EPUB 3 Samples (IDPF)](https://idpf.github.io/epub3-samples/30/samples.html)
+- **Local folder:** put downloaded `.epub` files in the repository `**samples/`** directory (see `samples/README.md`).
+- **Default first test:** `samples/accessible_epub_3.epub` (*Accessible EPUB 3*); details in [docs/testing-epub-samples.md](docs/testing-epub-samples.md).
+- **Details:** [docs/testing-epub-samples.md](docs/testing-epub-samples.md) (licensing notes, `*.epub` gitignore behavior, example commands).
+
 ## Usage
 
 ### Command Line
 
 Translate an EPUB file to Spanish:
+
 ```bash
 lexora translate input.epub output.txt --target es
 ```
 
 Translate a Word document to French:
+
 ```bash
 lexora translate document.docx translated.txt --target fr
 ```
 
 Specify source and target languages:
+
 ```bash
 lexora translate book.epub spanish_book.txt --source en --target es
 ```
 
 Use a specific AI provider:
+
 ```bash
 lexora translate input.md output.txt --target de --service azure-openai
 ```
 
 Translate using global cache (default) with explicit path:
+
 ```bash
 lexora translate input.epub output.epub --target vi --cache-path .lexora/cache/global_translation_cache.jsonl
 ```
 
 Translate using per-ebook cache isolation:
+
 ```bash
 lexora translate input.epub output.epub --target vi --cache-scope per-ebook
 ```
 
 Disable cache for a single run:
+
 ```bash
 lexora translate input.epub output.epub --target vi --no-cache
 ```
 
 Clear effective cache file before translation starts:
+
 ```bash
 lexora translate input.epub output.epub --target vi --clear-cache
 ```
 
 Fast test run on first 3 EPUB documents:
+
 ```bash
 lexora translate input.epub output.epub --target vi --limit-docs 3
 ```
 
 Run a specific EPUB document range (1-based inclusive):
+
 ```bash
 lexora translate input.epub output.epub --target vi --start-doc 5 --end-doc 8
 ```
 
+EPUB only — structured JSON batches (fewer round-trips; OpenAI, Azure AI Foundry, Gemini):
+
+```bash
+lexora translate samples/accessible_epub_3.epub out.epub --target vi --service openai --structured-epub-batch --limit-docs 1
+lexora translate samples/accessible_epub_3.epub out.epub --target vi --service gemini --structured-epub-batch --limit-docs 1
+```
+
 Valid options for the `--service` parameter:
+
 - `openai`
 - `azure-openai`
 - `azure-foundry`
@@ -163,28 +192,26 @@ print(translated)
 ## Supported AI Providers
 
 1. **OpenAI**: Uses GPT models for translation
-   - Requires: `OPENAI_API_KEY`
-
+  - Requires: `OPENAI_API_KEY`
 2. **Azure OpenAI**: Azure-hosted OpenAI models
-   - Requires: `AZURE_OPENAI_KEY` or `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`
-
+  - Requires: `AZURE_OPENAI_KEY` or `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`
 3. **Azure AI Foundry**: Azure AI Foundry inference service
-   - Requires: `AZURE_AI_FOUNDRY_API_KEY`, `AZURE_AI_FOUNDRY_ENDPOINT`, `AZURE_AI_FOUNDRY_MODEL`
-
+  - Requires: `AZURE_AI_FOUNDRY_API_KEY`, `AZURE_AI_FOUNDRY_ENDPOINT`, `AZURE_AI_FOUNDRY_MODEL`
 4. **Gemini**: Google Gemini models
-   - Requires: `GOOGLE_API_KEY`
-
+  - Requires: `GOOGLE_API_KEY`
 5. **Anthropic**: Claude models
-   - Requires: `ANTHROPIC_API_KEY`
-
+  - Requires: `ANTHROPIC_API_KEY`
 6. **Qwen**: Alibaba Qwen models
-   - Requires: `DASHSCOPE_API_KEY` or `QWEN_API_KEY`
+  - Requires: `DASHSCOPE_API_KEY` or `QWEN_API_KEY`
 
 ## Docs Index
 
 - [docs/vibe-context.md](docs/vibe-context.md): Core engineering context, guardrails, and architecture rules.
+- [docs/testing-epub-samples.md](docs/testing-epub-samples.md): IDPF sample EPUBs for testing, `samples/` folder, and license/git notes.
 - [docs/providers.md](docs/providers.md): Provider setup and configuration details.
 - [docs/translation-logic.md](docs/translation-logic.md): Canonical translation pipeline logic and EPUB flow.
+- [docs/epub-structured-batch-translation-design.md](docs/epub-structured-batch-translation-design.md): Structure-preserving JSON batch translation design (EPUB cost/latency).
+- [docs/epub-structured-batch-translation-plan.md](docs/epub-structured-batch-translation-plan.md): Task plan and phases (**LAI-T-032**–**LAI-T-035**).
 - [docs/track-a-cli-core-mvp-plan.md](docs/track-a-cli-core-mvp-plan.md): 2-week execution plan for translation-core and CLI-first hardening.
 - [docs/translation-run-contract.md](docs/translation-run-contract.md): Frozen run/report contract for CLI and future UI integration.
 - [docs/logging-framework.md](docs/logging-framework.md): Planned centralized logging architecture and sink model.
@@ -193,6 +220,7 @@ print(translated)
 ## Development
 
 Install in development mode:
+
 ```bash
 pip install -e .
 ```

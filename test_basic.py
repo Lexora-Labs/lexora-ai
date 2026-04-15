@@ -257,6 +257,211 @@ def test_theme_system():
         return False
 
 
+def test_structured_batch_pack_and_validate():
+    """Structured JSON batch helpers: packing and response validation."""
+    print("\nTesting structured batch pack/validate...")
+
+    try:
+        from lexora.core.structured_batch import (
+            StructuredBatchItem,
+            pack_items_by_char_budget,
+            validate_and_extract_translations,
+        )
+
+        items = [
+            StructuredBatchItem(id="a", text="x" * 100),
+            StructuredBatchItem(id="b", text="y" * 100),
+            StructuredBatchItem(id="c", text="z" * 100),
+        ]
+        batches = pack_items_by_char_budget(items, max_payload_chars=250, overhead_per_batch=50)
+        assert len(batches) >= 2, "Expected multiple batches under tight budget"
+
+        parsed = {
+            "items": [
+                {"id": "a", "translated_text": "A"},
+                {"id": "b", "translated_text": "B"},
+            ]
+        }
+        out = validate_and_extract_translations(
+            expected_ids=["a", "b"],
+            parsed=parsed,
+            source_by_id={"a": "hi", "b": "there"},
+        )
+        assert out == {"a": "A", "b": "B"}
+
+        try:
+            validate_and_extract_translations(
+                expected_ids=["a"],
+                parsed={"items": [{"id": "a", "translated_text": ""}]},
+                source_by_id={"a": "nonempty"},
+            )
+            assert False, "empty translation should fail for nonempty source"
+        except ValueError:
+            pass
+
+        print("✓ Structured batch helpers work")
+        return True
+    except Exception as e:
+        print(f"\n✗ Structured batch helper test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_cache_loads_structured_pipeline_version():
+    """Cache loader accepts epub-structured-json-v1 pipeline records."""
+    print("\nTesting cache structured pipeline version...")
+
+    try:
+        import tempfile
+        from lexora.core import CacheFingerprint, TranslationCache, build_cache_key, hash_glossary
+
+        fp = CacheFingerprint(
+            source_language="en",
+            target_language="vi",
+            provider_name="openai",
+            provider_model="gpt-4o",
+            glossary_hash=hash_glossary({}),
+            instruction_hash="x",
+            chunking_version="sentence-aware-structured-v1",
+            pipeline_version="epub-structured-json-v1",
+        )
+        content = "chunk text"
+        key = build_cache_key(content, fp)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_path = os.path.join(temp_dir, "s.jsonl")
+            with open(cache_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "schema_version": "1.0",
+                    "key": key,
+                    "translated_text": "TRANS",
+                    "fingerprint": {
+                        "pipeline_version": "epub-structured-json-v1",
+                        "chunking_version": "sentence-aware-structured-v1",
+                        "source_language": "en",
+                        "target_language": "vi",
+                        "provider_name": "openai",
+                        "provider_model": "gpt-4o",
+                        "glossary_hash": hash_glossary({}),
+                        "instruction_hash": "x",
+                    },
+                }) + "\n")
+
+            cache = TranslationCache(cache_path)
+            assert cache.get(content, fp) == "TRANS"
+
+        print("✓ Structured pipeline cache records load")
+        return True
+    except Exception as e:
+        print(f"\n✗ Structured pipeline cache test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_epub_structured_batch_smoke():
+    """EPUB path uses structured batches when provider supports them."""
+    print("\nTesting EPUB structured batch smoke...")
+
+    try:
+        import tempfile
+        import ebooklib
+
+        from lexora import Translator
+        from lexora.core.base_translator import (
+            BaseTranslator,
+            TranslationConfig,
+            TranslationResult,
+        )
+        from lexora.core.structured_batch import StructuredBatchItem
+        from typing import Dict, List, Tuple
+
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        in_path = os.path.join(repo_root, "samples", "hefty-water.epub")
+        if not os.path.isfile(in_path):
+            print("  (skipped: samples/hefty-water.epub not found — add IDPF samples under samples/)")
+            return True
+
+        class StructuredFakeProvider(BaseTranslator):
+            @property
+            def provider_name(self) -> str:
+                return "fake-structured"
+
+            def is_configured(self) -> bool:
+                return True
+
+            def translate_text(self, text: str, config: TranslationConfig) -> TranslationResult:
+                return TranslationResult(translated_content=text, bilingual_ast=None)
+
+            def translate_batch(
+                self, texts: List[str], config: TranslationConfig
+            ) -> List[TranslationResult]:
+                return [
+                    TranslationResult(translated_content=f"B:{t}", bilingual_ast=None)
+                    for t in texts
+                ]
+
+            def supports_structured_batch(self) -> bool:
+                return True
+
+            def translate_structured_batch(
+                self,
+                items: List[StructuredBatchItem],
+                *,
+                batch_id: str,
+                config: TranslationConfig,
+            ) -> Tuple[Dict[str, str], Dict[str, int]]:
+                return (
+                    {it.id: f"S:{it.text}" for it in items},
+                    {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+                )
+
+        tmp = tempfile.mkdtemp()
+        try:
+            out_path = os.path.join(tmp, "out.epub")
+
+            translator = Translator(provider=StructuredFakeProvider())
+            result = translator.translate_file(
+                input_file=in_path,
+                output_file=out_path,
+                target_language="vi",
+                cache_path=None,
+                limit_docs=1,
+                structured_epub_batch=True,
+                structured_epub_batch_max_chars=8000,
+            )
+
+            assert result.bilingual_ast is not None
+            meta = result.bilingual_ast.metadata
+            assert meta.get("structured_batch_enabled") is True
+            assert meta.get("structured_batches_total", 0) >= 1
+            assert meta.get("structured_items_total", 0) >= 1
+
+            book2 = ebooklib.epub.read_epub(out_path)
+            try:
+                found = False
+                for item in book2.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                    raw = item.get_content().decode("utf-8", errors="ignore")
+                    if "S:" in raw:
+                        found = True
+                        break
+                assert found, "Expected structured-prefixed translation in output EPUB"
+            finally:
+                del book2
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        print("✓ EPUB structured batch smoke passed")
+        return True
+    except Exception as e:
+        print(f"\n✗ EPUB structured batch smoke failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_translation_cache_key_stability():
     """Test cache key stability and fingerprint isolation behavior."""
     print("\nTesting translation cache key stability...")
@@ -479,6 +684,34 @@ def test_ui_sink_buffer_and_min_level():
         return True
     except Exception as e:
         print(f"\n✗ UI sink buffering test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_epub_reader_skips_document_root_spurious_text():
+    """lxml-xml must not collect the bogus top-level 'html' string (would corrupt EPUB)."""
+    print("\nTesting EPUB reader skips document-root spurious text...")
+
+    try:
+        from lexora.readers.epub_reader import EpubReader
+
+        reader = EpubReader()
+        xhtml = (
+            "<?xml version='1.0' encoding='utf-8'?>\n"
+            "<!DOCTYPE html>\n"
+            '<html xmlns="http://www.w3.org/1999/xhtml">'
+            "<head/><body><p>Hello</p></body></html>"
+        )
+        _soup, nodes = reader.extract_translatable_nodes(xhtml)
+        texts = [str(n).strip() for n in nodes]
+        assert "html" not in texts, f"unexpected document string in nodes: {texts}"
+        assert texts == ["Hello"], texts
+
+        print("✓ EPUB reader document-root filter works")
+        return True
+    except Exception as e:
+        print(f"\n✗ EPUB reader document-root test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -779,11 +1012,15 @@ def main():
     results = []
     results.append(("Imports", test_imports()))
     results.append(("Format Detection", test_reader_supports()))
+    results.append(("EPUB Reader Document Root", test_epub_reader_skips_document_root_spurious_text()))
     results.append(("Provider Configuration", test_provider_configuration()))
     results.append(("Translator Provider", test_translator_with_provider()))
     results.append(("Markdown Reader", test_markdown_reader()))
     results.append(("Theme System", test_theme_system()))
     results.append(("Translation Cache Key", test_translation_cache_key_stability()))
+    results.append(("Structured Batch Helpers", test_structured_batch_pack_and_validate()))
+    results.append(("Cache Structured Pipeline", test_cache_loads_structured_pipeline_version()))
+    results.append(("EPUB Structured Batch Smoke", test_epub_structured_batch_smoke()))
     results.append(("CLI Cache Scope/Clear", test_cli_cache_scope_and_clear_cache()))
     results.append(("Cache Compatibility", test_cache_record_compatibility_filtering()))
     results.append(("Logging Target Parsing", test_logging_target_parsing_and_fallback()))

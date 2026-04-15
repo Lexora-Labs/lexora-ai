@@ -8,8 +8,10 @@ This follows the Strategy Pattern as defined in vibe-context.md:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from enum import Enum
+
+from .structured_batch import StructuredBatchItem
 
 
 class TranslationMode(Enum):
@@ -154,6 +156,26 @@ class BaseTranslator(ABC):
             True if ready to use, False otherwise
         """
         pass
+
+    def supports_structured_batch(self) -> bool:
+        """Whether this provider implements translate_structured_batch for EPUB JSON batches."""
+        return False
+
+    def translate_structured_batch(
+        self,
+        items: List[StructuredBatchItem],
+        *,
+        batch_id: str,
+        config: TranslationConfig,
+    ) -> Tuple[Dict[str, str], Dict[str, int]]:
+        """
+        Translate multiple items in one request; return id -> translated text and token usage.
+
+        Default: not implemented. Call only when supports_structured_batch() is True.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement structured batch translation"
+        )
 
     @property
     @abstractmethod

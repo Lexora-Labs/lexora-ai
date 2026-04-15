@@ -85,9 +85,13 @@ Steps:
 Required env var:
 - `GOOGLE_API_KEY`
 
+Optional:
+- `GEMINI_MODEL` — Gemini model id (default `gemini-2.0-flash`). Use if the default is unavailable in your region or account.
+
 Example:
 ```env
 GOOGLE_API_KEY=your_google_key
+# GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ## Anthropic
@@ -149,13 +153,15 @@ DASHSCOPE_API_KEY=
 
 ## Quick Provider Validation Commands
 
-Run from the `lexora-ai` repo root after setting `.env`:
+Run from the `lexora-ai` repo root after setting `.env`.
+
+Use an EPUB from the IDPF sample catalog (see [testing-epub-samples.md](testing-epub-samples.md)); place it under `samples/` (for example `samples\accessible_epub_3.epub`). Replace the input path below with your file name.
 
 ```powershell
-python -m lexora.cli translate .\book.epub .\out-openai.epub --target vi --service openai --limit-docs 1
-python -m lexora.cli translate .\book.epub .\out-azure-openai.epub --target vi --service azure-openai --limit-docs 1
-python -m lexora.cli translate .\book.epub .\out-azure-foundry.epub --target vi --service azure-foundry --limit-docs 1
-python -m lexora.cli translate .\book.epub .\out-gemini.epub --target vi --service gemini --limit-docs 1
-python -m lexora.cli translate .\book.epub .\out-anthropic.epub --target vi --service anthropic --limit-docs 1
-python -m lexora.cli translate .\book.epub .\out-qwen.epub --target vi --service qwen --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-openai.epub --target vi --service openai --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-azure-openai.epub --target vi --service azure-openai --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-azure-foundry.epub --target vi --service azure-foundry --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-gemini.epub --target vi --service gemini --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-anthropic.epub --target vi --service anthropic --limit-docs 1
+python -m lexora.cli translate .\samples\accessible_epub_3.epub .\samples\out-qwen.epub --target vi --service qwen --limit-docs 1
 ```

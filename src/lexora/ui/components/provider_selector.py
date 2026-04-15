@@ -21,7 +21,7 @@ PROVIDERS: Dict[str, Dict] = {
         "env_var": "AZURE_OPENAI_KEY",
     },
     "Gemini": {
-        "models": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro"],
+        "models": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
         "env_var": "GOOGLE_API_KEY",
     },
     "Anthropic": {

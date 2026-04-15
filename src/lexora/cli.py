@@ -240,6 +240,20 @@ Supported AI providers:
         default=0,
         help='Neighbor chunk window size for context-aware translation (default: 0)',
     )
+    translate_parser.add_argument(
+        '--structured-epub-batch',
+        action='store_true',
+        help=(
+            'EPUB only: pack uncached chunks into JSON multi-item provider requests '
+            '(supported: openai, azure-foundry, gemini)'
+        ),
+    )
+    translate_parser.add_argument(
+        '--structured-epub-batch-max-chars',
+        type=int,
+        default=8000,
+        help='Approximate max source characters per structured EPUB batch (default: 8000, min: 2000)',
+    )
 
     args = parser.parse_args()
 
@@ -292,6 +306,10 @@ Supported AI providers:
                 no_cache=args.no_cache,
             )
             report_payload["cache_path"] = cache_path
+            report_payload["structured_epub_batch"] = bool(args.structured_epub_batch)
+            report_payload["structured_epub_batch_max_chars"] = (
+                args.structured_epub_batch_max_chars
+            )
 
             if args.clear_cache:
                 logger.info(_clear_cache_file(cache_path))
@@ -308,6 +326,12 @@ Supported AI providers:
                 raise ValueError("--chunk-size must be >= 200")
             if args.chunk_context_window < 0:
                 raise ValueError("--chunk-context-window must be >= 0")
+            if args.structured_epub_batch and args.chunk_context_window > 0:
+                raise ValueError(
+                    "Cannot use --structured-epub-batch together with --chunk-context-window > 0"
+                )
+            if args.structured_epub_batch_max_chars < 2000:
+                raise ValueError("--structured-epub-batch-max-chars must be >= 2000")
 
             input_path = Path(args.input)
             if not input_path.exists():
@@ -344,6 +368,8 @@ Supported AI providers:
                 end_doc=args.end_doc,
                 chunk_size=args.chunk_size,
                 chunk_context_window=args.chunk_context_window,
+                structured_epub_batch=args.structured_epub_batch,
+                structured_epub_batch_max_chars=args.structured_epub_batch_max_chars,
             )
             status = "success"
             elapsed = time.perf_counter() - started_at
