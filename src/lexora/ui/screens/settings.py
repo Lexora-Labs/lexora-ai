@@ -14,6 +14,15 @@ from typing import Callable, Dict, Optional
 import os
 
 from lexora.cli import DEFAULT_GLOBAL_CACHE_PATH
+from lexora.secrets import (
+    delete_secret,
+    delete_setting,
+    get_setting,
+    get_setting_first,
+    has_secret,
+    set_secret,
+    set_setting,
+)
 from lexora.ui.i18n import translate
 from lexora.ui.theme import Colors
 
@@ -22,29 +31,59 @@ from lexora.ui.theme import Colors
 PROVIDERS_CONFIG = {
     "OpenAI": {
         "env_var": "OPENAI_API_KEY",
+        "secret_vars": ["OPENAI_API_KEY"],
         "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4"],
         "default_model": "gpt-4o",
+        "config_fields": [],
     },
     "Azure OpenAI": {
         "env_var": "AZURE_OPENAI_KEY",
+        "secret_vars": ["AZURE_OPENAI_KEY", "AZURE_OPENAI_API_KEY"],
         "env_vars": ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_KEY", "AZURE_OPENAI_DEPLOYMENT"],
         "models": ["gpt-4o", "gpt-4", "gpt-35-turbo"],
         "default_model": "gpt-4o",
+        "config_fields": [
+            ("AZURE_OPENAI_ENDPOINT", "Endpoint"),
+            ("AZURE_OPENAI_DEPLOYMENT", "Deployment"),
+            ("AZURE_OPENAI_API_VERSION", "API version"),
+        ],
+    },
+    "Azure Foundry": {
+        "env_var": "AZURE_AI_FOUNDRY_API_KEY",
+        "secret_vars": ["AZURE_AI_FOUNDRY_API_KEY"],
+        "env_vars": ["AZURE_AI_FOUNDRY_ENDPOINT", "AZURE_AI_FOUNDRY_API_KEY", "AZURE_AI_FOUNDRY_MODEL"],
+        "models": ["gpt-4.1", "gpt-4o-mini", "gpt-4o"],
+        "default_model": "gpt-4.1",
+        "config_fields": [
+            ("AZURE_AI_FOUNDRY_ENDPOINT", "Endpoint"),
+            ("AZURE_AI_FOUNDRY_MODEL", "Model/Deployment"),
+        ],
     },
     "Gemini": {
         "env_var": "GOOGLE_API_KEY",
+        "secret_vars": ["GOOGLE_API_KEY"],
         "models": ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"],
         "default_model": "gemini-2.0-flash",
+        "config_fields": [
+            ("GEMINI_MODEL", "Model"),
+        ],
     },
     "Anthropic": {
         "env_var": "ANTHROPIC_API_KEY",
+        "secret_vars": ["ANTHROPIC_API_KEY"],
         "models": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
         "default_model": "claude-sonnet-4-20250514",
+        "config_fields": [],
     },
     "Qwen": {
         "env_var": "DASHSCOPE_API_KEY",
+        "secret_vars": ["DASHSCOPE_API_KEY", "QWEN_API_KEY"],
         "models": ["qwen-max", "qwen-plus", "qwen-turbo"],
         "default_model": "qwen-max",
+        "config_fields": [
+            ("QWEN_MODEL", "Model"),
+            ("QWEN_BASE_URL", "Base URL"),
+        ],
     },
 }
 
@@ -54,6 +93,12 @@ UI_NO_CACHE_KEY = "lexora_ui_no_cache"
 UI_CLEAR_CACHE_KEY = "lexora_ui_clear_cache"
 API_KEY_GUIDE_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/provider-api-key-guide.md"
 README_HELP_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/README.md"
+SETTING_ALIASES = {
+    "AZURE_AI_FOUNDRY_ENDPOINT": [
+        "AZURE_AI_FOUNDRY_API_ENDPOINT",
+        "AZURE_AI_FOUNDRY_BASE_URL",
+    ],
+}
 
 
 class SettingsScreen(ft.Container):
@@ -324,46 +369,90 @@ class SettingsScreen(ft.Container):
     def _create_provider_card(self, name: str, config: Dict) -> ft.Container:
         """Create a provider configuration card."""
         env_var = config.get("env_var", "")
-        is_configured = bool(os.getenv(env_var))
-        
-        # API Key field (masked)
+        secret_vars = config.get("secret_vars", [env_var])
+        source = self._secret_source(secret_vars)
+        is_configured = source is not None
+
         api_key_field = ft.TextField(
             label=f"{env_var}",
             hint_text="Enter API key...",
             password=True,
             can_reveal_password=True,
-            width=350,
+            value="********" if is_configured else "",
+            width=280,
             height=45,
+            text_size=12,
             bgcolor=Colors.BACKGROUND,
             border_radius=8,
         )
-        
+        extra_fields: Dict[str, ft.TextField] = {}
+        for field_key, field_label in config.get("config_fields", []):
+            extra_fields[field_key] = ft.TextField(
+                label=f"{field_label} ({field_key})",
+                value=self._get_setting_with_aliases(field_key),
+                width=280,
+                height=45,
+                text_size=12,
+                bgcolor=Colors.BACKGROUND,
+                border_radius=8,
+            )
+
+        inputs_row = ft.Row(
+            controls=[api_key_field] + list(extra_fields.values()),
+            spacing=10,
+            wrap=True,
+        )
+
         return ft.Container(
-            content=ft.Row([
-                ft.Container(
-                    content=ft.Icon(
-                        ft.icons.CHECK_CIRCLE if is_configured else ft.icons.ERROR_OUTLINE,
-                        color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
-                        size=24,
+            content=ft.Column(
+                controls=[
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Icon(
+                                    ft.icons.CHECK_CIRCLE if is_configured else ft.icons.ERROR_OUTLINE,
+                                    color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
+                                    size=24,
+                                ),
+                                width=40,
+                            ),
+                            ft.Column([
+                                ft.Text(name, size=15, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                                ft.Text(
+                                    f"Configured ({source})" if is_configured and source else "Not configured",
+                                    size=12,
+                                    color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
+                                ),
+                            ], spacing=2, width=180),
+                            ft.Container(expand=True),
+                            ft.IconButton(
+                                icon=ft.icons.SAVE,
+                                icon_color=Colors.PRIMARY,
+                                tooltip="Save Provider Config",
+                                on_click=lambda e, n=name, k=api_key_field, extras=extra_fields: self._save_api_key(
+                                    n,
+                                    k.value,
+                                    {key: field.value for key, field in extras.items()},
+                                ),
+                            ),
+                            ft.IconButton(
+                                icon=ft.icons.DELETE_OUTLINE,
+                                icon_color=Colors.WARNING,
+                                tooltip="Delete Local Provider Config",
+                                on_click=lambda e, n=name, k=api_key_field, extras=extra_fields: self._delete_provider_config(
+                                    n,
+                                    k,
+                                    extras,
+                                ),
+                            ),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    width=40,
-                ),
-                ft.Column([
-                    ft.Text(name, size=15, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
-                    ft.Text(
-                        "Configured" if is_configured else "Not configured",
-                        size=12,
-                        color=Colors.SUCCESS if is_configured else Colors.TEXT_SECONDARY,
-                    ),
-                ], spacing=2, width=140),
-                api_key_field,
-                ft.IconButton(
-                    icon=ft.icons.SAVE,
-                    icon_color=Colors.PRIMARY,
-                    tooltip="Save API Key",
-                    on_click=lambda e, n=name: self._save_api_key(n, api_key_field.value),
-                ),
-            ], spacing=12),
+                    inputs_row,
+                ],
+                spacing=8,
+            ),
             padding=16,
             bgcolor=Colors.BACKGROUND,
             border_radius=8,
@@ -379,14 +468,85 @@ class SettingsScreen(ft.Container):
             self.default_model.value = default_model
             self.page.update()
 
-    def _save_api_key(self, provider: str, api_key: str):
-        """Save API key (placeholder)."""
+    def _save_api_key(self, provider: str, api_key: str, extra_values: Optional[Dict[str, str]] = None):
+        """Save provider secrets and config values to local SQLite store."""
         t = lambda key: translate(self._app_locale, key)
-        if api_key:
-            # In a real app, this would securely save the key
-            self._show_snackbar(t("settings.snackbar.api_saved").format(provider=provider), Colors.SUCCESS)
-        else:
+        config = PROVIDERS_CONFIG.get(provider, {})
+        env_var = config.get("env_var")
+        if not env_var:
             self._show_snackbar(t("settings.snackbar.enter_api"), Colors.WARNING)
+            return
+        try:
+            if api_key and api_key.strip() != "********":
+                set_secret(str(env_var), api_key)
+            elif not extra_values:
+                self._show_snackbar(t("settings.snackbar.enter_api"), Colors.WARNING)
+                return
+
+            for k, v in (extra_values or {}).items():
+                set_setting(k, v or "")
+
+            self._show_snackbar(t("settings.snackbar.api_saved").format(provider=provider), Colors.SUCCESS)
+            self._build()
+            self.page.update()
+        except Exception:
+            self._show_snackbar("Unable to save provider configuration locally.", Colors.ERROR)
+            return
+
+        if not api_key and not extra_values:
+            self._show_snackbar(t("settings.snackbar.enter_api"), Colors.WARNING)
+
+    def _secret_source(self, names: list[str]) -> Optional[str]:
+        """Return where provider key is coming from: env or local store."""
+        for name in names:
+            if not name:
+                continue
+            env_val = os.getenv(name)
+            if env_val is not None and str(env_val).strip():
+                return "env"
+        for name in names:
+            if name and has_secret(name):
+                return "local"
+        return None
+
+    def _get_setting_with_aliases(self, key: str) -> str:
+        aliases = [key] + SETTING_ALIASES.get(key, [])
+        return get_setting_first(aliases, "") or ""
+
+    def _delete_provider_config(
+        self,
+        provider: str,
+        api_key_field: ft.TextField,
+        extra_fields: Dict[str, ft.TextField],
+    ) -> None:
+        config = PROVIDERS_CONFIG.get(provider, {})
+        secret_vars = config.get("secret_vars", [])
+        field_keys = [k for k, _ in config.get("config_fields", [])]
+        try:
+            for secret_name in secret_vars:
+                if secret_name:
+                    delete_secret(secret_name)
+
+            for key in field_keys:
+                delete_setting(key)
+                for alias in SETTING_ALIASES.get(key, []):
+                    delete_setting(alias)
+
+            api_key_field.value = ""
+            for field in extra_fields.values():
+                field.value = ""
+
+            env_still_active = self._secret_source(secret_vars) == "env"
+            message = (
+                f"Deleted local config for {provider}. Environment values are still active."
+                if env_still_active
+                else f"Deleted local config for {provider}."
+            )
+            self._show_snackbar(message, Colors.SUCCESS)
+            self._build()
+            self.page.update()
+        except Exception:
+            self._show_snackbar("Unable to delete local provider configuration.", Colors.ERROR)
 
     def _on_app_language_dropdown(self, e: ft.ControlEvent) -> None:
         """Notify shell to relabel UI (EN/VI)."""

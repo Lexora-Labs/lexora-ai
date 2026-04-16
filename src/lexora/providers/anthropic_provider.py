@@ -17,6 +17,7 @@ from lexora.core.base_translator import (
     BilingualAST,
     BilingualNode,
 )
+from lexora.secrets import get_secret
 
 try:
     import anthropic
@@ -60,7 +61,7 @@ class AnthropicProvider(BaseTranslator):
                 "anthropic package not installed. Run: pip install anthropic"
             )
         
-        self._api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self._api_key = api_key or get_secret("ANTHROPIC_API_KEY")
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature

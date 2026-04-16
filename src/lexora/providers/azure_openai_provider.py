@@ -20,6 +20,7 @@ from lexora.core.base_translator import (
     BilingualAST,
     BilingualNode,
 )
+from lexora.secrets import get_secret_first, get_setting
 
 
 class AzureOpenAIProvider(BaseTranslator):
@@ -54,10 +55,10 @@ class AzureOpenAIProvider(BaseTranslator):
             temperature: Sampling temperature
             debug: Enable debug logging
         """
-        self._endpoint = endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
-        self._api_key = api_key or os.getenv("AZURE_OPENAI_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
-        self._deployment = deployment or os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
-        self._api_version = os.getenv("AZURE_OPENAI_API_VERSION", api_version)
+        self._endpoint = endpoint or get_setting("AZURE_OPENAI_ENDPOINT")
+        self._api_key = api_key or get_secret_first(["AZURE_OPENAI_KEY", "AZURE_OPENAI_API_KEY"])
+        self._deployment = deployment or get_setting("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
+        self._api_version = get_setting("AZURE_OPENAI_API_VERSION", api_version) or api_version
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[AzureOpenAI] = None

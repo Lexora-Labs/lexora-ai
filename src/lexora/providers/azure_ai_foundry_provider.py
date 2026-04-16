@@ -23,6 +23,7 @@ from lexora.core.structured_batch import (
     parse_structured_batch_response,
     validate_and_extract_translations,
 )
+from lexora.secrets import get_secret, get_setting
 
 try:
     from openai import OpenAI
@@ -50,10 +51,10 @@ class AzureAIFoundryProvider(BaseTranslator):
                 "Run: pip install openai"
             )
 
-        self._api_key = api_key or os.getenv("AZURE_AI_FOUNDRY_API_KEY")
-        endpoint_env = endpoint or os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
+        self._api_key = api_key or get_secret("AZURE_AI_FOUNDRY_API_KEY")
+        endpoint_env = endpoint or get_setting("AZURE_AI_FOUNDRY_ENDPOINT")
         self._endpoint = endpoint_env.rstrip("/") if endpoint_env else None
-        self._model = model or os.getenv("AZURE_AI_FOUNDRY_MODEL")
+        self._model = model or get_setting("AZURE_AI_FOUNDRY_MODEL")
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None
