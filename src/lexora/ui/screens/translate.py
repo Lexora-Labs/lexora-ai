@@ -100,6 +100,17 @@ def _count_documents_for_run(
     return len(selected)
 
 
+def _provider_models(provider_label: str) -> List[str]:
+    """Return provider model list with env-configured Azure Foundry deployment prioritized."""
+    models = list(PROVIDERS.get(provider_label, []))
+    if provider_label == "Azure Foundry":
+        env_model = (os.getenv("AZURE_AI_FOUNDRY_MODEL") or "").strip()
+        if env_model:
+            models = [m for m in models if m != env_model]
+            models.insert(0, env_model)
+    return models
+
+
 UI_CACHE_SCOPE_KEY = "lexora_ui_cache_scope"
 UI_CACHE_PATH_KEY = "lexora_ui_cache_path"
 UI_NO_CACHE_KEY = "lexora_ui_no_cache"
@@ -205,8 +216,8 @@ class TranslateScreen(ft.Container):
         )
         self.model_dropdown = ft.Dropdown(
             label=self._t("translate.model"),
-            options=[ft.dropdown.Option(m) for m in PROVIDERS["OpenAI"]],
-            value=PROVIDERS["OpenAI"][0],
+            options=[ft.dropdown.Option(m) for m in _provider_models("OpenAI")],
+            value=_provider_models("OpenAI")[0],
             width=220,
             height=DROPDOWN_HEIGHT,
             text_size=CONTROL_TEXT_SIZE,
@@ -506,7 +517,7 @@ class TranslateScreen(ft.Container):
 
     def _on_provider_change(self, e: ft.ControlEvent) -> None:
         provider = e.control.value
-        models = PROVIDERS.get(provider, [])
+        models = _provider_models(provider)
         self.model_dropdown.options = [ft.dropdown.Option(m) for m in models]
         self.model_dropdown.value = models[0] if models else None
         self._page.update()
