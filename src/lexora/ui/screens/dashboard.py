@@ -93,7 +93,7 @@ class DashboardScreen(ft.Container):
             if self._on_open_library:
                 self._on_open_library()
             else:
-                self._navigate_to(nav_ids.PROJECTS)
+                self._navigate_to(nav_ids.LIBRARY)
 
         quick_section = ft.Container(
             content=ft.Column(

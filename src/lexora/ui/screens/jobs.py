@@ -11,6 +11,7 @@ import flet as ft
 
 from lexora.logging_framework import get_ui_log_events
 from lexora.ui.desktop_open import open_file, reveal_in_file_manager
+from lexora.ui.i18n import translate
 from lexora.ui.job_store import JobStore, TranslationJob
 from lexora.ui.theme import Colors
 
@@ -56,6 +57,7 @@ class JobsScreen(ft.Container):
         on_cancel_job: Optional[Callable[[str], bool]] = None,
         on_retry_job: Optional[Callable[[str], bool]] = None,
         on_delete_job: Optional[Callable[[str], bool]] = None,
+        get_text: Optional[Callable[[str], str]] = None,
     ):
         super().__init__()
         self.page = page
@@ -63,6 +65,7 @@ class JobsScreen(ft.Container):
         self._on_cancel_job = on_cancel_job
         self._on_retry_job = on_retry_job
         self._on_delete_job = on_delete_job
+        self._t = get_text or (lambda key: translate("en", key))
         self._jobs = self._job_store.snapshot()
         self._filter = "all"
         self._run_log_tab_index = 4
@@ -80,11 +83,11 @@ class JobsScreen(ft.Container):
             selected_index=0,
             animation_duration=300,
             tabs=[
-                ft.Tab(text="All Jobs", icon=ft.icons.LIST),
-                ft.Tab(text="In Progress", icon=ft.icons.PENDING),
-                ft.Tab(text="Completed", icon=ft.icons.CHECK_CIRCLE),
-                ft.Tab(text="Failed", icon=ft.icons.ERROR),
-                ft.Tab(text="Run log", icon=ft.icons.ARTICLE),
+                ft.Tab(text=self._t("jobs.tab.all"), icon=ft.icons.LIST),
+                ft.Tab(text=self._t("jobs.tab.in_progress"), icon=ft.icons.PENDING),
+                ft.Tab(text=self._t("jobs.tab.completed"), icon=ft.icons.CHECK_CIRCLE),
+                ft.Tab(text=self._t("jobs.tab.failed"), icon=ft.icons.ERROR),
+                ft.Tab(text=self._t("jobs.tab.run_log"), icon=ft.icons.ARTICLE),
             ],
             on_change=self._on_tab_change,
         )
@@ -92,10 +95,10 @@ class JobsScreen(ft.Container):
         # Stats Row
         self.stats_row = ft.Row(
             [
-                self._stat_chip("Queued", self._count_by_status("queued"), Colors.TEXT_SECONDARY),
-                self._stat_chip("In Progress", self._count_by_status("in_progress"), Colors.WARNING),
-                self._stat_chip("Completed", self._count_by_status("completed"), Colors.SUCCESS),
-                self._stat_chip("Failed", self._count_by_status("failed"), Colors.ERROR),
+                self._stat_chip(self._t("jobs.stat.queued"), self._count_by_status("queued"), Colors.TEXT_SECONDARY),
+                self._stat_chip(self._t("jobs.stat.in_progress"), self._count_by_status("in_progress"), Colors.WARNING),
+                self._stat_chip(self._t("jobs.stat.completed"), self._count_by_status("completed"), Colors.SUCCESS),
+                self._stat_chip(self._t("jobs.stat.failed"), self._count_by_status("failed"), Colors.ERROR),
             ],
             spacing=12,
         )
@@ -112,8 +115,8 @@ class JobsScreen(ft.Container):
             content=ft.Column([
                 ft.Icon(ft.icons.WORK_HISTORY_OUTLINED, size=64, color=Colors.TEXT_SECONDARY),
                 ft.Container(height=16),
-                ft.Text("No jobs found", size=18, weight=ft.FontWeight.W_500, color=Colors.TEXT_PRIMARY),
-                ft.Text("Start a translation to see jobs here", size=14, color=Colors.TEXT_SECONDARY),
+                ft.Text(self._t("jobs.empty.title"), size=18, weight=ft.FontWeight.W_500, color=Colors.TEXT_PRIMARY),
+                ft.Text(self._t("jobs.empty.subtitle"), size=14, color=Colors.TEXT_SECONDARY),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
             expand=True,
             visible=False,
@@ -133,7 +136,7 @@ class JobsScreen(ft.Container):
             expand=True,
             content=ft.Column(
                 [
-                    ft.Text("Run log", size=16, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(self._t("jobs.log.title"), size=16, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                     self.run_log_hint,
                     ft.Container(
                         expand=True,
@@ -192,18 +195,18 @@ class JobsScreen(ft.Container):
     def _create_job_card(self, job: TranslationJob) -> ft.Container:
         """Create a job card."""
         status_config = {
-            "queued": (ft.icons.SCHEDULE, Colors.TEXT_SECONDARY, "Queued"),
-            "in_progress": (ft.icons.PENDING, Colors.WARNING, "In Progress"),
-            "completed": (ft.icons.CHECK_CIRCLE, Colors.SUCCESS, "Completed"),
-            "failed": (ft.icons.ERROR, Colors.ERROR, "Failed"),
-            "cancelled": (ft.icons.CANCEL, Colors.TEXT_SECONDARY, "Cancelled"),
+            "queued": (ft.icons.SCHEDULE, Colors.TEXT_SECONDARY, self._t("jobs.status.queued")),
+            "in_progress": (ft.icons.PENDING, Colors.WARNING, self._t("jobs.status.in_progress")),
+            "completed": (ft.icons.CHECK_CIRCLE, Colors.SUCCESS, self._t("jobs.status.completed")),
+            "failed": (ft.icons.ERROR, Colors.ERROR, self._t("jobs.status.failed")),
+            "cancelled": (ft.icons.CANCEL, Colors.TEXT_SECONDARY, self._t("jobs.status.cancelled")),
         }
         
         icon, color, status_text = status_config.get(job.status, (ft.icons.HELP, Colors.TEXT_SECONDARY, "Unknown"))
 
         menu_items: List[ft.PopupMenuItem] = [
             ft.PopupMenuItem(
-                text="View details",
+                text=self._t("jobs.menu.view_details"),
                 icon=ft.icons.INFO,
                 on_click=lambda e, j=job: self._show_job_details(j),
             ),
@@ -211,7 +214,7 @@ class JobsScreen(ft.Container):
         if job.log_cursor_start is not None:
             menu_items.append(
                 ft.PopupMenuItem(
-                    text="View run log",
+                    text=self._t("jobs.menu.view_run_log"),
                     icon=ft.icons.ARTICLE_OUTLINED,
                     on_click=lambda e, j=job: self._show_job_log_dialog(j),
                 )
@@ -220,14 +223,14 @@ class JobsScreen(ft.Container):
             outp = job.output_path
             menu_items.append(
                 ft.PopupMenuItem(
-                    text="Open translated file",
+                    text=self._t("jobs.menu.open_file"),
                     icon=ft.icons.OPEN_IN_NEW,
                     on_click=lambda _e, p=outp: self._menu_open_translated(p),
                 )
             )
             menu_items.append(
                 ft.PopupMenuItem(
-                    text="Open file location",
+                    text=self._t("jobs.menu.open_location"),
                     icon=ft.icons.FOLDER_OPEN,
                     on_click=lambda _e, p=outp: self._menu_open_location(p),
                 )
@@ -236,7 +239,7 @@ class JobsScreen(ft.Container):
             menu_items.append(ft.PopupMenuItem(text="Cancel", icon=ft.icons.CANCEL, on_click=lambda _: self._cancel_job(job.id)))
         if job.status == "failed":
             menu_items.append(
-                ft.PopupMenuItem(text="Re-run", icon=ft.icons.REFRESH, on_click=lambda _: self._retry_job(job.id))
+                ft.PopupMenuItem(text=self._t("jobs.menu.rerun"), icon=ft.icons.REFRESH, on_click=lambda _: self._retry_job(job.id))
             )
         menu_items.append(ft.PopupMenuItem(text="Delete", icon=ft.icons.DELETE, on_click=lambda _: self._delete_job(job.id)))
 
@@ -380,7 +383,7 @@ class JobsScreen(ft.Container):
     def _refresh_run_log_content(self) -> None:
         job = self._active_in_progress_job()
         if not job:
-            self.run_log_hint.value = "No translation is running. Start a job from Translate, then watch the log here."
+            self.run_log_hint.value = self._t("jobs.log.no_running")
             self.run_log_list.controls.clear()
             return
         self.run_log_hint.value = f"Live log for: {job.book_title}  ({job.run_id})"
@@ -404,7 +407,7 @@ class JobsScreen(ft.Container):
     def _show_job_log_dialog(self, job: TranslationJob) -> None:
         events = self._slice_log_events(job)
         if not events:
-            self._show_message("No log lines were captured for this job.")
+            self._show_message(self._t("jobs.msg.no_log"))
             return
         lines = []
         for event in events[-800:]:
@@ -419,9 +422,9 @@ class JobsScreen(ft.Container):
         )
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text(f"Run log — {job.book_title}", weight=ft.FontWeight.W_600),
+            title=ft.Text(f"{self._t('jobs.dialog.log_title')} — {job.book_title}", weight=ft.FontWeight.W_600),
             content=ft.Container(width=560, height=440, padding=ft.padding.only(top=8), content=body),
-            actions=[ft.TextButton("Close", on_click=self._close_dialog)],
+            actions=[ft.TextButton(self._t("jobs.dialog.close"), on_click=self._close_dialog)],
             actions_alignment=ft.MainAxisAlignment.END,
         )
         self.page.dialog = dlg
@@ -441,16 +444,16 @@ class JobsScreen(ft.Container):
         if not success:
             # Fallback for queued jobs if no callback is wired.
             self._job_store.set_status(job_id, status="cancelled", progress=0.0)
-            self._show_message("Job cancelled.")
+            self._show_message(self._t("jobs.msg.cancelled"))
         else:
-            self._show_message("Cancel requested.")
+            self._show_message(self._t("jobs.msg.cancel_requested"))
 
     def _retry_job(self, job_id: str) -> None:
         success = self._on_retry_job(job_id) if self._on_retry_job else False
         if success:
-            self._show_message("Re-run queued.")
+            self._show_message(self._t("jobs.msg.rerun_queued"))
             return
-        self._show_message("Re-run is not available for this job.")
+        self._show_message(self._t("jobs.msg.rerun_unavailable"))
 
     def _delete_job(self, job_id: str) -> None:
         if self._on_delete_job:
@@ -492,9 +495,9 @@ class JobsScreen(ft.Container):
         )
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Job details", weight=ft.FontWeight.W_600),
+            title=ft.Text(self._t("jobs.dialog.details_title"), weight=ft.FontWeight.W_600),
             content=ft.Container(width=520, height=420, padding=ft.padding.only(top=8), content=scroll_col),
-            actions=[ft.TextButton("Close", on_click=self._close_dialog)],
+            actions=[ft.TextButton(self._t("jobs.dialog.close"), on_click=self._close_dialog)],
             actions_alignment=ft.MainAxisAlignment.END,
         )
         self.page.dialog = dlg
