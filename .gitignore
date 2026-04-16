@@ -234,3 +234,7 @@ docs/vibe-context.md
 
 # Local benchmark and analysis outputs
 reports/
+
+# Local UI runtime state (do not commit user data)
+.lexora/*.sqlite3
+.lexora/*.key

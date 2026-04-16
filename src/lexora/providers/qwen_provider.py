@@ -18,6 +18,7 @@ from lexora.core.base_translator import (
     BilingualAST,
     BilingualNode,
 )
+from lexora.secrets import get_secret_first, get_setting
 
 try:
     from openai import OpenAI
@@ -67,9 +68,9 @@ class QwenProvider(BaseTranslator):
                 "openai package not installed. Run: pip install openai"
             )
         
-        self._api_key = api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY")
-        self._model = model
-        self._base_url = base_url or self.DASHSCOPE_BASE_URL
+        self._api_key = api_key or get_secret_first(["DASHSCOPE_API_KEY", "QWEN_API_KEY"])
+        self._model = model or get_setting("QWEN_MODEL", "qwen-max") or "qwen-max"
+        self._base_url = base_url or get_setting("QWEN_BASE_URL", self.DASHSCOPE_BASE_URL) or self.DASHSCOPE_BASE_URL
         self._temperature = temperature
         self._debug = debug
         self._client: Optional[OpenAI] = None

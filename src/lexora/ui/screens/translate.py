@@ -24,6 +24,7 @@ from lexora.cli import (
 from lexora.providers import canonical_provider_name, create_provider
 from lexora.translator import TranslationCancelled, Translator
 from lexora.logging_framework import build_logging_config, configure_logging, get_ui_log_events
+from lexora.secrets import get_setting
 from lexora.ui.i18n import translate
 from lexora.ui.job_store import JobStore
 from lexora.ui.theme import Colors
@@ -104,7 +105,22 @@ def _provider_models(provider_label: str) -> List[str]:
     """Return provider model list with env-configured Azure Foundry deployment prioritized."""
     models = list(PROVIDERS.get(provider_label, []))
     if provider_label == "Azure Foundry":
-        env_model = (os.getenv("AZURE_AI_FOUNDRY_MODEL") or "").strip()
+        env_model = (get_setting("AZURE_AI_FOUNDRY_MODEL", "") or "").strip()
+        if env_model:
+            models = [m for m in models if m != env_model]
+            models.insert(0, env_model)
+    elif provider_label == "Azure OpenAI":
+        env_model = (get_setting("AZURE_OPENAI_DEPLOYMENT", "") or "").strip()
+        if env_model:
+            models = [m for m in models if m != env_model]
+            models.insert(0, env_model)
+    elif provider_label == "Gemini":
+        env_model = (get_setting("GEMINI_MODEL", "") or "").strip()
+        if env_model:
+            models = [m for m in models if m != env_model]
+            models.insert(0, env_model)
+    elif provider_label == "Qwen":
+        env_model = (get_setting("QWEN_MODEL", "") or "").strip()
         if env_model:
             models = [m for m in models if m != env_model]
             models.insert(0, env_model)
@@ -403,21 +419,6 @@ class TranslateScreen(ft.Container):
             ),
         )
 
-        self.output_name = ft.Text("", size=16, weight=ft.FontWeight.W_500, color=Colors.TEXT_PRIMARY)
-        self.output_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY)
-        self.output_section = ft.Container(
-            padding=10,
-            bgcolor=Colors.SURFACE,
-            border_radius=10,
-            visible=False,
-            content=ft.Column(
-                [
-                    ft.Row([ft.Icon(ft.icons.CHECK_CIRCLE, color=Colors.SUCCESS), ft.Text(self._t("translate.output"), size=16, weight=ft.FontWeight.W_600, color=Colors.SUCCESS)], spacing=8),
-                    ft.Container(height=12),
-                    ft.Row([ft.Icon(ft.icons.DESCRIPTION, color=Colors.SUCCESS, size=40), ft.Container(width=16), ft.Column([self.output_name, self.output_path], spacing=2, expand=True)]),
-                ]
-            ),
-        )
         self.translate_btn = ft.ElevatedButton(
             self._t("translate.start_translation"),
             bgcolor=Colors.PRIMARY,
@@ -446,8 +447,6 @@ class TranslateScreen(ft.Container):
                 action_section,
                 ft.Container(height=16),
                 self.translation_status_strip,
-                ft.Container(height=16),
-                self.output_section,
             ],
             scroll=ft.ScrollMode.AUTO,
             expand=True,
@@ -791,7 +790,6 @@ class TranslateScreen(ft.Container):
         self.cancel_btn.visible = translating
         self.cancel_btn.disabled = False
         self.translation_status_strip.visible = translating
-        self.output_section.visible = False
         self._page.update()
 
     def _build_provider(self, provider_label: str, model_name: str):
@@ -984,9 +982,6 @@ class TranslateScreen(ft.Container):
             self.status_text.color = Colors.SUCCESS
             self.chapter_text.value = ""
             output_path = Path(output_file)
-            self.output_name.value = output_path.name
-            self.output_path.value = str(output_path.parent)
-            self.output_section.visible = True
             meta = (result.bilingual_ast.metadata if result.bilingual_ast else None) or {}
             td_raw = meta.get("docs_total")
             dt_raw = meta.get("docs_translated")

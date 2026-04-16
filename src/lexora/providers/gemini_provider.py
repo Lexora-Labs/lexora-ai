@@ -23,6 +23,7 @@ from lexora.core.structured_batch import (
     parse_structured_batch_response,
     validate_and_extract_translations,
 )
+from lexora.secrets import get_secret, get_setting
 
 # Gemini structured output schema (matches validate_and_extract_translations contract).
 _STRUCTURED_BATCH_RESPONSE_JSON_SCHEMA: Dict[str, Any] = {
@@ -87,11 +88,11 @@ class GeminiProvider(BaseTranslator):
                 "Run: pip install google-genai"
             )
 
-        self._api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self._api_key = api_key or get_secret("GOOGLE_API_KEY")
         self._model_name = (
             model
-            or os.getenv("GEMINI_MODEL")
-            or os.getenv("GOOGLE_GEMINI_MODEL")
+            or get_setting("GEMINI_MODEL")
+            or get_setting("GOOGLE_GEMINI_MODEL")
             or "gemini-2.0-flash"
         )
         self._temperature = temperature
