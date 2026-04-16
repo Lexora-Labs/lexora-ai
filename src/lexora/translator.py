@@ -3,7 +3,7 @@
 import hashlib
 import logging
 import time
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Callable
 from pathlib import Path
 from ebooklib import epub
 
@@ -21,6 +21,21 @@ from .core import (
 from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
 from .core.structured_batch import StructuredBatchItem, pack_items_by_char_budget
+
+
+class TranslationCancelled(Exception):
+    """Raised when a cooperative cancel is requested during ``translate_file``."""
+
+    pass
+
+
+def _cancel_requested(cancel_fn: Optional[Callable[[], bool]]) -> bool:
+    if cancel_fn is None:
+        return False
+    try:
+        return bool(cancel_fn())
+    except Exception:
+        return False
 
 
 class Translator:
@@ -96,6 +111,8 @@ class Translator:
         chunk_context_window: int = 0,
         structured_epub_batch: bool = False,
         structured_epub_batch_max_chars: int = 8000,
+        on_document_progress: Optional[Callable[[int, int], None]] = None,
+        cancel_requested: Optional[Callable[[], bool]] = None,
     ) -> TranslationResult:
         """
         Translate a file to the target language.
@@ -115,6 +132,11 @@ class Translator:
             chunk_context_window: Number of neighbor chunks on each side for context
             structured_epub_batch: Use JSON multi-item batches for uncached EPUB chunks (GPT providers)
             structured_epub_batch_max_chars: Approx max source chars per structured batch (EPUB path)
+            on_document_progress: Optional ``(docs_completed, docs_total)`` callback after each EPUB
+                document is processed (including skipped spine items), or ``(1, 1)`` when a non-EPUB
+                file finishes.
+            cancel_requested: Optional zero-arg callable; if it returns True, abort with
+                :class:`TranslationCancelled` between EPUB documents and before repack / plain-file write.
         """
         # Check if input file exists
         input_path = Path(input_file)
@@ -139,6 +161,8 @@ class Translator:
                 chunk_context_window=chunk_context_window,
                 structured_epub_batch=structured_epub_batch,
                 structured_epub_batch_max_chars=structured_epub_batch_max_chars,
+                on_document_progress=on_document_progress,
+                cancel_requested=cancel_requested,
             )
 
         # Read the file
@@ -152,6 +176,15 @@ class Translator:
 
         if not text.strip():
             raise ValueError("No text content found in the file")
+
+        if on_document_progress:
+            try:
+                on_document_progress(0, 1)
+            except Exception:
+                pass
+
+        if _cancel_requested(cancel_requested):
+            raise TranslationCancelled("Translation cancelled.")
 
         # Translate the text
         self._log_event(
@@ -170,6 +203,9 @@ class Translator:
             glossary=glossary,
         )
 
+        if _cancel_requested(cancel_requested):
+            raise TranslationCancelled("Translation cancelled.")
+
         # Write the translated text
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +221,11 @@ class Translator:
             output_file=output_file,
             elapsed_ms=0,
         )
+        if on_document_progress:
+            try:
+                on_document_progress(1, 1)
+            except Exception:
+                pass
         return result
 
     def _translate_epub_file(
@@ -204,6 +245,8 @@ class Translator:
         chunk_context_window: int = 0,
         structured_epub_batch: bool = False,
         structured_epub_batch_max_chars: int = 8000,
+        on_document_progress: Optional[Callable[[int, int], None]] = None,
+        cancel_requested: Optional[Callable[[], bool]] = None,
     ) -> TranslationResult:
         """Translate EPUB content by replacing DOM text nodes and repacking EPUB."""
         use_structured = (
@@ -283,7 +326,14 @@ class Translator:
             output_file=output_file,
             doc_total=len(docs),
         )
+        if on_document_progress and docs:
+            try:
+                on_document_progress(0, len(docs))
+            except Exception:
+                pass
         for doc_index, item in enumerate(docs, start=1):
+            if _cancel_requested(cancel_requested):
+                raise TranslationCancelled("Translation cancelled.")
             doc_started_at = time.perf_counter()
             self._log_event(
                 logging.INFO,
@@ -307,6 +357,11 @@ class Translator:
                     item_name=item.get_name(),
                     reason="no_translatable_nodes",
                 )
+                if on_document_progress:
+                    try:
+                        on_document_progress(doc_index, len(docs))
+                    except Exception:
+                        pass
                 continue
 
             source_texts = [str(node) for node in text_nodes]
@@ -346,6 +401,8 @@ class Translator:
 
             batch_results: List[TranslationResult] = []
             if uncached_texts:
+                if _cancel_requested(cancel_requested):
+                    raise TranslationCancelled("Translation cancelled.")
                 self._log_event(
                     logging.INFO,
                     "translation.epub.provider_batch.started",
@@ -417,6 +474,14 @@ class Translator:
                 elapsed_ms=round(doc_elapsed * 1000),
                 provider=self.provider.provider_name,
             )
+            if on_document_progress:
+                try:
+                    on_document_progress(doc_index, len(docs))
+                except Exception:
+                    pass
+
+        if _cancel_requested(cancel_requested):
+            raise TranslationCancelled("Translation cancelled.")
 
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)

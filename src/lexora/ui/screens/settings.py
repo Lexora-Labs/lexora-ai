@@ -52,6 +52,8 @@ UI_CACHE_SCOPE_KEY = "lexora_ui_cache_scope"
 UI_CACHE_PATH_KEY = "lexora_ui_cache_path"
 UI_NO_CACHE_KEY = "lexora_ui_no_cache"
 UI_CLEAR_CACHE_KEY = "lexora_ui_clear_cache"
+API_KEY_GUIDE_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/provider-api-key-guide.md"
+README_HELP_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/README.md"
 
 
 class SettingsScreen(ft.Container):
@@ -63,11 +65,15 @@ class SettingsScreen(ft.Container):
         *,
         app_locale: str = "en",
         on_app_language: Optional[Callable[[str], None]] = None,
+        get_theme_mode: Optional[Callable[[], ft.ThemeMode]] = None,
+        on_theme_mode: Optional[Callable[[ft.ThemeMode], None]] = None,
     ):
         super().__init__()
         self.page = page
         self._app_locale = app_locale
         self._on_app_language = on_app_language
+        self._get_theme_mode = get_theme_mode
+        self._on_theme_mode = on_theme_mode
         self._build()
 
     def _build(self):
@@ -83,6 +89,26 @@ class SettingsScreen(ft.Container):
         provider_cards = []
         for name, config in PROVIDERS_CONFIG.items():
             provider_cards.append(self._create_provider_card(name, config))
+
+        help_row = ft.Container(
+            content=ft.Row(
+                [
+                    ft.OutlinedButton(
+                        "How to get API keys",
+                        icon=ft.icons.HELP_OUTLINE,
+                        on_click=self._open_api_key_guide,
+                    ),
+                    ft.TextButton(
+                        "Open README Help",
+                        icon=ft.icons.MENU_BOOK,
+                        on_click=self._open_readme_help,
+                    ),
+                ],
+                spacing=12,
+                wrap=True,
+            ),
+            padding=ft.padding.only(bottom=12),
+        )
         
         providers_section = ft.Container(
             content=ft.Column([
@@ -158,16 +184,6 @@ class SettingsScreen(ft.Container):
         )
         
         # Translation Settings Section
-        self.temperature_slider = ft.Slider(
-            min=0,
-            max=1,
-            value=0.2,
-            divisions=10,
-            label="{value}",
-            active_color=Colors.PRIMARY,
-        )
-        
-        self.bilingual_switch = ft.Switch(value=True, active_color=Colors.PRIMARY)
         self.cache_scope_dropdown = ft.Dropdown(
             label="Cache Scope",
             options=[
@@ -197,18 +213,6 @@ class SettingsScreen(ft.Container):
                     ft.Text("Translation Settings", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                 ], spacing=8),
                 ft.Container(height=16),
-                ft.Row([
-                    ft.Text("Temperature:", size=14, color=Colors.TEXT_PRIMARY, width=150),
-                    ft.Container(content=self.temperature_slider, expand=True),
-                    ft.Text("0.2", size=14, color=Colors.TEXT_SECONDARY),
-                ]),
-                ft.Container(height=12),
-                ft.Row([
-                    ft.Text("Bilingual Output:", size=14, color=Colors.TEXT_PRIMARY, width=150),
-                    self.bilingual_switch,
-                    ft.Text("Keep original text alongside translation", size=13, color=Colors.TEXT_SECONDARY),
-                ]),
-                ft.Container(height=12),
                 ft.Row([
                     self.cache_scope_dropdown,
                     self.cache_path_field,
@@ -246,6 +250,10 @@ class SettingsScreen(ft.Container):
             disabled=self._on_app_language is None,
         )
 
+        theme_mode = self._get_theme_mode() if self._get_theme_mode else ft.ThemeMode.SYSTEM
+        theme_value = {ft.ThemeMode.DARK: "dark", ft.ThemeMode.LIGHT: "light", ft.ThemeMode.SYSTEM: "system"}.get(
+            theme_mode, "system"
+        )
         self.theme_dropdown = ft.Dropdown(
             label="Theme",
             options=[
@@ -253,11 +261,12 @@ class SettingsScreen(ft.Container):
                 ft.dropdown.Option("light", "Light"),
                 ft.dropdown.Option("system", "System"),
             ],
-            value="dark",
+            value=theme_value,
             width=200,
             bgcolor=Colors.BACKGROUND,
             border_radius=8,
             on_change=self._on_theme_change,
+            disabled=self._on_theme_mode is None,
         )
         
         ui_section = ft.Container(
@@ -297,6 +306,7 @@ class SettingsScreen(ft.Container):
         
         # Layout
         self.content = ft.Column([
+            help_row,
             providers_section,
             ft.Container(height=20),
             defaults_section,
@@ -382,17 +392,18 @@ class SettingsScreen(ft.Container):
         if lang in ("en", "vi") and self._on_app_language:
             self._on_app_language(lang)
 
-    def _on_theme_change(self, e):
-        """Apply the selected theme immediately."""
-        from lexora.ui.theme import apply_theme
+    def _on_theme_change(self, e: ft.ControlEvent) -> None:
+        """Apply the selected theme (same pipeline as the header theme control)."""
         mode_map = {
             "dark": ft.ThemeMode.DARK,
             "light": ft.ThemeMode.LIGHT,
             "system": ft.ThemeMode.SYSTEM,
         }
-        mode = mode_map.get(e.control.value, ft.ThemeMode.DARK)
-        apply_theme(self.page, mode)
-        self.page.update()
+        mode = mode_map.get(str(e.control.value), ft.ThemeMode.SYSTEM)
+        if self._get_theme_mode and mode == self._get_theme_mode():
+            return
+        if self._on_theme_mode:
+            self._on_theme_mode(mode)
 
     def _save_settings(self, e):
         """Save all settings."""
@@ -410,8 +421,6 @@ class SettingsScreen(ft.Container):
         self.default_provider.value = "OpenAI"
         self.default_model.value = "gpt-4o"
         self.default_language.value = "vi"
-        self.temperature_slider.value = 0.2
-        self.bilingual_switch.value = True
         self.cache_scope_dropdown.value = "global"
         self.cache_path_field.value = DEFAULT_GLOBAL_CACHE_PATH
         self.no_cache_switch.value = False
@@ -424,10 +433,13 @@ class SettingsScreen(ft.Container):
         except Exception:
             pass
         self.theme_dropdown.value = "dark"
-        # Reset to dark theme
-        from lexora.ui.theme import apply_theme
-        apply_theme(self.page, ft.ThemeMode.DARK)
-        self.page.update()
+        if self._on_theme_mode:
+            self._on_theme_mode(ft.ThemeMode.DARK)
+        else:
+            from lexora.ui.theme import apply_theme
+
+            apply_theme(self.page, ft.ThemeMode.DARK)
+            self.page.update()
         self._show_snackbar("Settings reset to defaults", Colors.PRIMARY)
 
     def _show_snackbar(self, message: str, color: str):
@@ -438,6 +450,20 @@ class SettingsScreen(ft.Container):
         )
         self.page.snack_bar.open = True
         self.page.update()
+
+    def _open_api_key_guide(self, _: ft.ControlEvent) -> None:
+        """Open provider API key guide on GitHub."""
+        try:
+            self.page.launch_url(API_KEY_GUIDE_URL)
+        except Exception:
+            self._show_snackbar("Unable to open API key guide URL.", Colors.WARNING)
+
+    def _open_readme_help(self, _: ft.ControlEvent) -> None:
+        """Open project README help on GitHub."""
+        try:
+            self.page.launch_url(README_HELP_URL)
+        except Exception:
+            self._show_snackbar("Unable to open README URL.", Colors.WARNING)
 
     def _get_storage_value(self, key: str, default):
         """Safe read from client storage with fallback."""

@@ -37,6 +37,7 @@ class MainLayout(ft.Container):
         views: Optional[Dict[int, ft.Control]] = None,
         on_navigate: Optional[Callable[[int], None]] = None,
         on_toggle_theme: Optional[Callable[[ft.ControlEvent], None]] = None,
+        on_open_help: Optional[Callable[[ft.ControlEvent], None]] = None,
         theme_icon: Optional[str] = None,
         get_text: Optional[Callable[[str], str]] = None,
         on_new_translation: Optional[Callable[[ft.ControlEvent], None]] = None,
@@ -47,6 +48,7 @@ class MainLayout(ft.Container):
         self._views = views or {}
         self._on_navigate = on_navigate
         self._on_toggle_theme = on_toggle_theme
+        self._on_open_help = on_open_help
         self._theme_icon = theme_icon
         self._get_text = get_text or (lambda k: k)
         self._on_new_translation = on_new_translation
@@ -81,6 +83,7 @@ class MainLayout(ft.Container):
             show_search=True,
             workspace_hint=self._get_text("app.workspace"),
             on_toggle_theme=self._on_toggle_theme,
+            on_open_help=self._on_open_help,
             theme_icon=self._theme_icon,
             get_text=self._get_text,
             on_new_translation=self._on_new_translation,
