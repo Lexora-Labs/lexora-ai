@@ -735,6 +735,11 @@ class TranslateScreen(ft.Container):
         """Re-run an existing job in-place (same job id / row)."""
         request = self._job_requests.get(job_id)
         if not request:
+            existing = self._job_store.get_job(job_id)
+            if existing and existing.parameters:
+                request = dict(existing.parameters)
+                self._job_requests[job_id] = dict(request)
+        if not request:
             return False
         rerun_request = dict(request)
         if not self._job_store.prepare_rerun(job_id, parameters=rerun_request):

@@ -7,6 +7,8 @@ Blueprint theme, primary navigation, EN/VI strings, header quick actions.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
 import flet as ft
@@ -39,6 +41,13 @@ from lexora.ui.screens.jobs import JobsScreen
 from lexora.ui.screens.settings import SettingsScreen
 from lexora.ui.screens.about import AboutScreen
 from lexora.ui.job_store import JobStore
+
+
+def _resolve_jobs_db_path() -> str:
+    configured = (os.getenv("LEXORA_UI_JOBS_DB") or "").strip()
+    if configured:
+        return configured
+    return str(Path(".lexora") / "jobs.sqlite3")
 
 
 def attach_lexora_shell(
@@ -93,7 +102,7 @@ def attach_lexora_shell(
 
     layout_ref: dict[str, Optional[MainLayout]] = {"layout": None}
     translate_ref: dict[str, Optional[TranslateScreen]] = {"screen": None}
-    job_store = JobStore()
+    job_store = JobStore(db_path=_resolve_jobs_db_path())
 
     def _on_app_language_changed(lang: str) -> None:
         if lang not in ("en", "vi"):
