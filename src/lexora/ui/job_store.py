@@ -8,6 +8,8 @@ from datetime import datetime
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional
 
+from lexora.ui.job_store_db import JobStoreDB
+
 
 def _now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -44,10 +46,47 @@ class TranslationJob:
 class JobStore:
     """Thread-safe in-memory job state with change subscriptions."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, db_path: Optional[str] = None) -> None:
         self._jobs: Dict[str, TranslationJob] = {}
         self._listeners: List[Callable[[], None]] = []
         self._lock = Lock()
+        self._db = JobStoreDB(db_path) if db_path else None
+        self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        if self._db is None:
+            return
+        loaded_rows = self._db.load_jobs()
+        if not loaded_rows:
+            return
+        with self._lock:
+            for row in loaded_rows:
+                job = TranslationJob(**row)
+                if job.status == "in_progress":
+                    # Cannot resume a mid-flight worker after app restart.
+                    job.status = "failed"
+                    job.error = "Interrupted by app restart."
+                    if not job.completed_at:
+                        job.completed_at = _now_str()
+                self._jobs[job.id] = job
+        self._persist_all()
+
+    def _persist_all(self) -> None:
+        if self._db is None:
+            return
+        with self._lock:
+            jobs = list(self._jobs.values())
+        for job in jobs:
+            self._db.upsert_job(job)
+
+    def _persist_job(self, job_id: str) -> None:
+        if self._db is None:
+            return
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is None:
+            return
+        self._db.upsert_job(job)
 
     def subscribe(self, callback: Callable[[], None]) -> Callable[[], None]:
         with self._lock:
@@ -87,6 +126,7 @@ class JobStore:
                 created_at=_now_str(),
                 parameters=copy.deepcopy(parameters or {}),
             )
+        self._persist_job(job_id)
         self._notify()
 
     def mark_run_started(self, job_id: str) -> None:
@@ -96,6 +136,7 @@ class JobStore:
             if not job or job.started_at:
                 return
             job.started_at = _now_str()
+        self._persist_job(job_id)
         self._notify()
 
     def update_doc_counts(
@@ -113,6 +154,7 @@ class JobStore:
                 job.total_docs = max(0, int(total_docs))
             if docs_translated is not None:
                 job.docs_translated = max(0, int(docs_translated))
+        self._persist_job(job_id)
         self._notify()
 
     def set_doc_progress(self, job_id: str, *, docs_completed: int, docs_total: int) -> None:
@@ -129,6 +171,7 @@ class JobStore:
                 effective = real_t + 1
                 numerator = 1 + min(c, real_t)
                 job.progress = min(0.999, numerator / float(effective))
+        self._persist_job(job_id)
         self._notify()
 
     def set_output_path(self, job_id: str, path: str) -> None:
@@ -137,6 +180,7 @@ class JobStore:
             if not job:
                 return
             job.output_path = path
+        self._persist_job(job_id)
         self._notify()
 
     def set_log_cursor_start(self, job_id: str, cursor: int) -> None:
@@ -145,6 +189,7 @@ class JobStore:
             if not job:
                 return
             job.log_cursor_start = max(0, int(cursor))
+        self._persist_job(job_id)
         self._notify()
 
     def set_log_cursor_end(self, job_id: str, cursor: int) -> None:
@@ -153,6 +198,7 @@ class JobStore:
             if not job:
                 return
             job.log_cursor_end = max(0, int(cursor))
+        self._persist_job(job_id)
         self._notify()
 
     def get_job(self, job_id: str) -> Optional[TranslationJob]:
@@ -176,6 +222,7 @@ class JobStore:
             job.error = None
             job.log_cursor_start = None
             job.log_cursor_end = None
+        self._persist_job(job_id)
         self._notify()
         return True
 
@@ -188,6 +235,8 @@ class JobStore:
             if job.status == "in_progress":
                 return False, "Stop/cancel a running job before deleting."
             del self._jobs[job_id]
+        if self._db is not None:
+            self._db.delete_job(job_id)
         self._notify()
         return True, "Job deleted."
 
@@ -221,6 +270,7 @@ class JobStore:
                     job.duration_ms = max(0, int(duration_ms))
                 if status == "completed":
                     job.progress = 1.0
+        self._persist_job(job_id)
         self._notify()
 
     def _notify(self) -> None:
