@@ -9,7 +9,7 @@ import time
 import uuid
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 import flet as ft
 from dotenv import load_dotenv
@@ -24,6 +24,7 @@ from lexora.cli import (
 from lexora.providers import canonical_provider_name, create_provider
 from lexora.translator import TranslationCancelled, Translator
 from lexora.logging_framework import build_logging_config, configure_logging, get_ui_log_events
+from lexora.ui.i18n import translate
 from lexora.ui.job_store import JobStore
 from lexora.ui.theme import Colors
 
@@ -125,12 +126,13 @@ def _ensure_console_logging() -> None:
 class TranslateScreen(ft.Container):
     """Translate screen with CLI-equivalent runtime options."""
 
-    def __init__(self, page: ft.Page, job_store: JobStore):
+    def __init__(self, page: ft.Page, job_store: JobStore, get_text: Optional[Callable[[str], str]] = None):
         super().__init__()
         _ensure_console_logging()
         self._logger = logging.getLogger("lexora.ui.translate")
         self._page = page
         self._job_store = job_store
+        self._t = get_text or (lambda key: translate("en", key))
         self._selected_file: Optional[str] = None
         self._selected_name: Optional[str] = None
         self._selected_glossary: Optional[str] = None
@@ -149,10 +151,10 @@ class TranslateScreen(ft.Container):
         self._page.overlay.append(self.glossary_picker)
 
         self.file_icon = ft.Icon(ft.icons.MENU_BOOK, color=Colors.PRIMARY, size=40)
-        self.file_name = ft.Text("No file selected", size=16, color=Colors.TEXT_SECONDARY)
+        self.file_name = ft.Text(self._t("translate.no_file_selected"), size=16, color=Colors.TEXT_SECONDARY)
         self.file_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY, visible=False)
         self.select_btn = ft.ElevatedButton(
-            "Select input file",
+            self._t("translate.select_input_file"),
             icon=ft.icons.FOLDER_OPEN,
             bgcolor=Colors.PRIMARY,
             color=Colors.TEXT_PRIMARY,
@@ -165,7 +167,7 @@ class TranslateScreen(ft.Container):
             border_radius=10,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.icons.UPLOAD_FILE), ft.Text("File Selection", size=16, weight=ft.FontWeight.W_600)], spacing=8),
+                    ft.Row([ft.Icon(ft.icons.UPLOAD_FILE), ft.Text(self._t("translate.file_selection"), size=16, weight=ft.FontWeight.W_600)], spacing=8),
                     ft.Container(height=4),
                     ft.Row(
                         [
@@ -193,7 +195,7 @@ class TranslateScreen(ft.Container):
         )
 
         self.provider_dropdown = ft.Dropdown(
-            label="Provider",
+            label=self._t("translate.provider"),
             options=[ft.dropdown.Option(p) for p in PROVIDERS.keys()],
             value="OpenAI",
             width=180,
@@ -202,7 +204,7 @@ class TranslateScreen(ft.Container):
             on_change=self._on_provider_change,
         )
         self.model_dropdown = ft.Dropdown(
-            label="Model",
+            label=self._t("translate.model"),
             options=[ft.dropdown.Option(m) for m in PROVIDERS["OpenAI"]],
             value=PROVIDERS["OpenAI"][0],
             width=220,
@@ -210,7 +212,7 @@ class TranslateScreen(ft.Container):
             text_size=CONTROL_TEXT_SIZE,
         )
         self.target_language_dropdown = ft.Dropdown(
-            label="Target Language",
+            label=self._t("translate.target_language"),
             options=[ft.dropdown.Option(key=code, text=name) for code, name in LANGUAGES],
             value="vi",
             width=180,
@@ -219,15 +221,15 @@ class TranslateScreen(ft.Container):
             on_change=self._on_target_language_change,
         )
         self.source_language_dropdown = ft.Dropdown(
-            label="Source Language",
-            options=[ft.dropdown.Option("auto", "Auto detect")] + [ft.dropdown.Option(key=code, text=name) for code, name in LANGUAGES],
+            label=self._t("translate.source_language"),
+            options=[ft.dropdown.Option("auto", self._t("translate.auto_detect"))] + [ft.dropdown.Option(key=code, text=name) for code, name in LANGUAGES],
             value="auto",
             width=180,
             height=DROPDOWN_HEIGHT,
             text_size=CONTROL_TEXT_SIZE,
         )
         self.mode_dropdown = ft.Dropdown(
-            label="Mode",
+            label=self._t("translate.mode"),
             options=[ft.dropdown.Option("replace"), ft.dropdown.Option("bilingual")],
             value="replace",
             width=130,
@@ -235,15 +237,15 @@ class TranslateScreen(ft.Container):
             text_size=CONTROL_TEXT_SIZE,
         )
         self.output_file_field = ft.TextField(
-            label="Output file",
+            label=self._t("translate.output_file"),
             value="",
-            hint_text="Auto: inputFileName<lang>.ext",
+            hint_text=self._t("translate.output_hint"),
             width=500,
             height=CONTROL_HEIGHT,
             text_size=CONTROL_TEXT_SIZE,
         )
         self.output_reset_btn = ft.OutlinedButton(
-            "Reset default",
+            self._t("translate.reset_default"),
             icon=ft.icons.RESTART_ALT,
             height=CONTROL_HEIGHT,
             on_click=self._on_reset_output_default,
@@ -252,8 +254,8 @@ class TranslateScreen(ft.Container):
         self.glossary_path = ft.Text("", size=12, color=Colors.TEXT_SECONDARY)
         glossary_row = ft.Row(
             [
-                ft.OutlinedButton("Select glossary JSON", icon=ft.icons.ARTICLE_OUTLINED, on_click=lambda _: self.glossary_picker.pick_files(allowed_extensions=["json"], dialog_title="Select glossary JSON")),
-                ft.OutlinedButton("Clear glossary", icon=ft.icons.CLEAR, on_click=self._clear_glossary),
+                ft.OutlinedButton(self._t("translate.select_glossary"), icon=ft.icons.ARTICLE_OUTLINED, on_click=lambda _: self.glossary_picker.pick_files(allowed_extensions=["json"], dialog_title=self._t("translate.select_glossary"))),
+                ft.OutlinedButton(self._t("translate.clear_glossary"), icon=ft.icons.CLEAR, on_click=self._clear_glossary),
             ],
             spacing=8,
             wrap=True,
@@ -279,7 +281,7 @@ class TranslateScreen(ft.Container):
             border_radius=10,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.icons.SETTINGS), ft.Text("Translation Settings", size=16, weight=ft.FontWeight.W_600)], spacing=8),
+                    ft.Row([ft.Icon(ft.icons.SETTINGS), ft.Text(self._t("translate.translation_settings"), size=16, weight=ft.FontWeight.W_600)], spacing=8),
                     ft.Container(height=6),
                     ft.Row([self.provider_dropdown, self.model_dropdown, self.target_language_dropdown, self.source_language_dropdown, self.mode_dropdown], spacing=12, wrap=True),
                     ft.Row([self.output_file_field, self.output_reset_btn], spacing=8, wrap=True),
@@ -296,7 +298,7 @@ class TranslateScreen(ft.Container):
             icon=ft.icons.EXPAND_MORE,
             icon_size=18,
             icon_color=Colors.TEXT_SECONDARY,
-            tooltip="Expand advanced config",
+            tooltip=self._t("translate.expand_advanced"),
             width=CONTROL_HEIGHT,
             height=CONTROL_HEIGHT,
             style=ft.ButtonStyle(padding=0),
@@ -320,7 +322,7 @@ class TranslateScreen(ft.Container):
                         alignment=ft.alignment.center_left,
                         content=ft.Row(
                             [
-                                ft.Text("Structured EPUB batch"),
+                                ft.Text(self._t("translate.structured_batch")),
                                 self.structured_batch_switch,
                                 self.structured_max_chars_field,
                             ],
@@ -355,7 +357,7 @@ class TranslateScreen(ft.Container):
                         content=ft.Row(
                             [
                                 ft.Row(
-                                    [ft.Icon(ft.icons.TUNE), ft.Text("Advanced config", size=16, weight=ft.FontWeight.W_600)],
+                                    [ft.Icon(ft.icons.TUNE), ft.Text(self._t("translate.advanced_config"), size=16, weight=ft.FontWeight.W_600)],
                                     spacing=8,
                                     alignment=ft.MainAxisAlignment.START,
                                 ),
@@ -373,7 +375,7 @@ class TranslateScreen(ft.Container):
             ),
         )
 
-        self.status_text = ft.Text("Ready to translate", size=14, color=Colors.TEXT_SECONDARY)
+        self.status_text = ft.Text(self._t("translate.ready"), size=14, color=Colors.TEXT_SECONDARY)
         self.chapter_text = ft.Text("", size=12, color=Colors.TEXT_SECONDARY, italic=True)
         self.translation_status_strip = ft.Container(
             padding=10,
@@ -382,7 +384,7 @@ class TranslateScreen(ft.Container):
             visible=False,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.icons.SYNC), ft.Text("Status", size=16, weight=ft.FontWeight.W_600)], spacing=8),
+                    ft.Row([ft.Icon(ft.icons.SYNC), ft.Text(self._t("translate.status"), size=16, weight=ft.FontWeight.W_600)], spacing=8),
                     ft.Container(height=8),
                     self.status_text,
                     self.chapter_text,
@@ -399,14 +401,14 @@ class TranslateScreen(ft.Container):
             visible=False,
             content=ft.Column(
                 [
-                    ft.Row([ft.Icon(ft.icons.CHECK_CIRCLE, color=Colors.SUCCESS), ft.Text("Output", size=16, weight=ft.FontWeight.W_600, color=Colors.SUCCESS)], spacing=8),
+                    ft.Row([ft.Icon(ft.icons.CHECK_CIRCLE, color=Colors.SUCCESS), ft.Text(self._t("translate.output"), size=16, weight=ft.FontWeight.W_600, color=Colors.SUCCESS)], spacing=8),
                     ft.Container(height=12),
                     ft.Row([ft.Icon(ft.icons.DESCRIPTION, color=Colors.SUCCESS, size=40), ft.Container(width=16), ft.Column([self.output_name, self.output_path], spacing=2, expand=True)]),
                 ]
             ),
         )
         self.translate_btn = ft.ElevatedButton(
-            "Start Translation",
+            self._t("translate.start_translation"),
             bgcolor=Colors.PRIMARY,
             color=Colors.TEXT_PRIMARY,
             height=50,
@@ -415,7 +417,7 @@ class TranslateScreen(ft.Container):
             on_click=self._on_translate,
         )
         self.cancel_btn = ft.OutlinedButton(
-            "Cancel",
+            self._t("common.cancel"),
             height=50,
             visible=False,
             on_click=self._on_cancel,
@@ -449,7 +451,7 @@ class TranslateScreen(ft.Container):
         self._log_ui_action("Open file picker")
         self.file_picker.pick_files(
             allowed_extensions=["epub", "mobi", "docx", "doc", "md"],
-            dialog_title="Select file",
+            dialog_title=self._t("translate.select_file_dialog"),
         )
 
     def _on_file_picked(self, e: ft.FilePickerResultEvent) -> None:
@@ -467,9 +469,9 @@ class TranslateScreen(ft.Container):
                 self.translate_btn.disabled = False
                 self._log_ui_action(f"Selected file: {f.name}")
             else:
-                self.file_path.value = "No local file path available in browser mode."
+                self.file_path.value = self._t("translate.no_local_path")
                 self.file_path.visible = True
-                self.status_text.value = "Cannot access local path in browser mode; use desktop mode to translate local files."
+                self.status_text.value = self._t("translate.browser_mode_no_local")
                 self.status_text.color = Colors.WARNING
                 self.translate_btn.disabled = True
                 self._log_ui_action("File selected without local path (browser mode)", logging.WARNING)
@@ -487,7 +489,7 @@ class TranslateScreen(ft.Container):
             ft.icons.EXPAND_LESS if self._advanced_expanded else ft.icons.EXPAND_MORE
         )
         self.advanced_toggle_btn.tooltip = (
-            "Collapse advanced config" if self._advanced_expanded else "Expand advanced config"
+            self._t("translate.collapse_advanced") if self._advanced_expanded else self._t("translate.expand_advanced")
         )
         self._page.update()
 
@@ -567,12 +569,12 @@ class TranslateScreen(ft.Container):
 
     def _build_run_request(self) -> Dict[str, Any]:
         if not self._selected_file:
-            raise ValueError("No file selected")
+            raise ValueError(self._t("translate.no_file_selected"))
         provider_label = self.provider_dropdown.value
         model_name = self.model_dropdown.value
         target_lang = self.target_language_dropdown.value
         if not provider_label or not model_name or not target_lang:
-            raise ValueError("Please select provider, model, and target language.")
+            raise ValueError(self._t("translate.select_required"))
 
         limit_docs = self._parse_optional_int(self.limit_docs_field.value, "limit-docs")
         start_doc = self._parse_optional_int(self.start_doc_field.value, "start-doc")
@@ -651,7 +653,7 @@ class TranslateScreen(ft.Container):
         self._cancel_requested = False
         self._run_cancel_event.clear()
         self._update_ui_translating(True)
-        self.status_text.value = "Starting translation..."
+        self.status_text.value = self._t("translate.starting")
         self.status_text.color = Colors.TEXT_SECONDARY
         self.chapter_text.value = f"{request['provider_label']} • {request['model_name']} • {request['target_lang']}"
         if self._job_store.get_job(store_job_id) is None:
@@ -690,7 +692,7 @@ class TranslateScreen(ft.Container):
             self._log_ui_action(f"Validation failed: {exc}", logging.ERROR)
             self._page.update()
             return
-        self._log_ui_action("Starting translation run" if not self._is_translating else "Queueing translation run")
+        self._log_ui_action(self._t("translate.starting_run") if not self._is_translating else self._t("translate.queueing"))
         self._start_or_queue_job(request)
 
     def _on_cancel(self, _: ft.ControlEvent) -> None:
@@ -699,9 +701,9 @@ class TranslateScreen(ft.Container):
         self._cancel_requested = True
         self._run_cancel_event.set()
         self.cancel_btn.disabled = True
-        self.status_text.value = "Stopping translation…"
+        self.status_text.value = self._t("translate.stopping")
         self.status_text.color = Colors.WARNING
-        self.chapter_text.value = "Cancelling after the current step."
+        self.chapter_text.value = self._t("translate.cancelling_step")
         self._log_ui_action("Cancel requested by user", logging.WARNING)
         self._page.update()
 
@@ -711,9 +713,9 @@ class TranslateScreen(ft.Container):
             self._cancel_requested = True
             self._run_cancel_event.set()
             self.cancel_btn.disabled = True
-            self.status_text.value = "Stopping translation…"
+            self.status_text.value = self._t("translate.stopping")
             self.status_text.color = Colors.WARNING
-            self.chapter_text.value = "Cancelling after the current step."
+            self.chapter_text.value = self._t("translate.cancelling_step")
             self._log_ui_action("Cancel requested by user", logging.WARNING)
             self._page.update()
             return True
@@ -774,7 +776,7 @@ class TranslateScreen(ft.Container):
 
     def _update_ui_translating(self, translating: bool) -> None:
         self.translate_btn.disabled = self._selected_file is None
-        self.translate_btn.text = "Queue Translation" if translating else "Start Translation"
+        self.translate_btn.text = self._t("translate.queue_translation") if translating else self._t("translate.start_translation")
         self.cancel_btn.visible = translating
         self.cancel_btn.disabled = False
         self.translation_status_strip.visible = translating
@@ -826,7 +828,7 @@ class TranslateScreen(ft.Container):
         }
         try:
             if not request["input_file"]:
-                raise ValueError("No file selected")
+                raise ValueError(self._t("translate.no_file_selected"))
             provider_label = str(request["provider_label"])
             model_name = str(request["model_name"])
             target_lang = str(request["target_lang"])
@@ -908,7 +910,7 @@ class TranslateScreen(ft.Container):
                 }
             )
 
-            self.status_text.value = "Translating file..."
+            self.status_text.value = self._t("translate.translating")
             self.chapter_text.value = "Reading and translating content"
             self._log_ui_action("Translator started")
             self._page.update()
@@ -950,9 +952,9 @@ class TranslateScreen(ft.Container):
             if self._active_store_job_id != store_job_id:
                 return
             if self._cancel_requested:
-                self.status_text.value = "Cancelled"
+                self.status_text.value = self._t("translate.cancelled")
                 self.status_text.color = Colors.WARNING
-                self.chapter_text.value = "Translation was stopped before completion."
+                self.chapter_text.value = self._t("translate.stopped_before_completion")
                 cancel_ms = int((time.perf_counter() - started_at) * 1000)
                 self._job_store.set_status(store_job_id, status="cancelled", progress=0.0, duration_ms=cancel_ms)
                 self._log_ui_action("Run cancelled", logging.WARNING)
@@ -967,7 +969,7 @@ class TranslateScreen(ft.Container):
                 _write_run_report(report_path, report_payload)
                 self._log_ui_action(f"Run report written: {report_path}")
 
-            self.status_text.value = "Translation completed"
+            self.status_text.value = self._t("translate.completed")
             self.status_text.color = Colors.SUCCESS
             self.chapter_text.value = ""
             output_path = Path(output_file)
@@ -991,9 +993,9 @@ class TranslateScreen(ft.Container):
 
         except TranslationCancelled:
             cancel_ms = int((time.perf_counter() - started_at) * 1000)
-            self.status_text.value = "Cancelled"
+            self.status_text.value = self._t("translate.cancelled")
             self.status_text.color = Colors.WARNING
-            self.chapter_text.value = "Translation was stopped."
+            self.chapter_text.value = self._t("translate.stopped")
             self._job_store.set_status(store_job_id, status="cancelled", progress=0.0, duration_ms=cancel_ms)
             self._log_ui_action("Run cancelled", logging.WARNING)
 
