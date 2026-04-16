@@ -7,6 +7,8 @@ Lexora AI is an open-source, AI-powered eBook translation tool. It enables devel
 - **Provider-Based AI Support**: Plug in OpenAI, Azure OpenAI, Azure AI Foundry, Gemini, Anthropic, or Qwen
 - **Multiple File Format Support**: Read and translate EPUB, MOBI, Word (.docx), and Markdown (.md) files
 - **Preserve Formatting**: Maintains document structure during translation
+- **Desktop/Web UI (Flet)**: Translate, Jobs, and Settings screens with queue-aware run monitoring
+- **Jobs Lifecycle Management**: Single active run, queued runs, cancel/re-run, run logs, and quick open output actions
 - **Easy CLI Interface**: Simple command-line tool for quick translations
 - **Python API**: Use as a library in your own projects
 
@@ -77,6 +79,36 @@ For manual runs and regression tests, use **IDPF EPUB 3 reference samples** inst
 - **Details:** [docs/testing-epub-samples.md](docs/testing-epub-samples.md) (licensing notes, `*.epub` gitignore behavior, example commands).
 
 ## Usage
+
+### UI (Flet App)
+
+Start the UI (auto-opens browser by default):
+
+```bash
+python run_ui.py
+```
+
+Start as desktop app only (no browser auto-open):
+
+```bash
+python run_ui.py --no-browser
+```
+
+From the UI:
+
+- Use **Translate** to configure provider/model/languages and start jobs.
+- Use **Jobs** to monitor queue/running/completed states, view run log, cancel active jobs, and re-run failed jobs.
+- Use **Settings** for cache behavior, provider guidance links, and app appearance/language preferences.
+
+#### Recommended first run
+
+1. Configure one provider API key in **Settings** (or `.env`).
+2. Open **Translate** and select `samples/accessible_epub_3.epub`.
+3. Keep defaults, then set:
+   - Provider: `OpenAI` (or any configured provider)
+   - Target language: `vi`
+4. Start the translation and monitor progress in **Jobs**.
+5. When completed, use job actions (**...**) to open the translated output file/location.
 
 ### Command Line
 
@@ -207,6 +239,7 @@ print(translated)
 ## Docs Index
 
 - [docs/vibe-context.md](docs/vibe-context.md): Core engineering context, guardrails, and architecture rules.
+- [docs/provider-api-key-guide.md](docs/provider-api-key-guide.md): How to get and configure provider API keys.
 - [docs/testing-epub-samples.md](docs/testing-epub-samples.md): IDPF sample EPUBs for testing, `samples/` folder, and license/git notes.
 - [docs/providers.md](docs/providers.md): Provider setup and configuration details.
 - [docs/translation-logic.md](docs/translation-logic.md): Canonical translation pipeline logic and EPUB flow.
@@ -214,6 +247,7 @@ print(translated)
 - [docs/epub-structured-batch-translation-plan.md](docs/epub-structured-batch-translation-plan.md): Task plan and phases (**LAI-T-032**–**LAI-T-035**).
 - [docs/track-a-cli-core-mvp-plan.md](docs/track-a-cli-core-mvp-plan.md): 2-week execution plan for translation-core and CLI-first hardening.
 - [docs/translation-run-contract.md](docs/translation-run-contract.md): Frozen run/report contract for CLI and future UI integration.
+- [docs/ui-data-model.md](docs/ui-data-model.md): UI-side `TranslationJob` model and lifecycle/state notes.
 - [docs/logging-framework.md](docs/logging-framework.md): Planned centralized logging architecture and sink model.
 - [docs/todo-list.md](docs/todo-list.md): Planned translation pipeline improvements.
 

@@ -22,6 +22,7 @@ class Header(ft.Container):
         show_search: bool = False,
         workspace_hint: Optional[str] = None,
         on_toggle_theme: Optional[Callable[[ft.ControlEvent], None]] = None,
+        on_open_help: Optional[Callable[[ft.ControlEvent], None]] = None,
         theme_icon: Optional[str] = None,
         get_text: Optional[Callable[[str], str]] = None,
         on_new_translation: Optional[Callable[[ft.ControlEvent], None]] = None,
@@ -33,6 +34,7 @@ class Header(ft.Container):
         self._show_search = show_search
         self._workspace_hint = workspace_hint
         self._on_toggle_theme = on_toggle_theme
+        self._on_open_help = on_open_help
         self._theme_icon = theme_icon or ft.icons.DARK_MODE
         self._get_text = get_text or (lambda k: k)
         self._on_new_translation = on_new_translation
@@ -99,6 +101,13 @@ class Header(ft.Container):
             visible=self._on_toggle_theme is not None,
             on_click=self._on_toggle_theme,
         )
+        self.help_btn = ft.IconButton(
+            icon=ft.icons.HELP_OUTLINE,
+            icon_color=Colors.TEXT_SECONDARY,
+            tooltip="README Help",
+            visible=self._on_open_help is not None,
+            on_click=self._on_open_help,
+        )
 
         self.user_btn = ft.IconButton(
             icon=ft.icons.ACCOUNT_CIRCLE_OUTLINED,
@@ -113,6 +122,7 @@ class Header(ft.Container):
                         title_col,
                         ft.Container(expand=True),
                         self.new_translation_btn,
+                        self.help_btn,
                         self.theme_btn,
                         self.notification_btn,
                         self.user_btn,
@@ -154,6 +164,7 @@ class Header(ft.Container):
         self.search_field.bgcolor = Colors.SURFACE
         self.search_field.border_color = Colors.BORDER
         self.search_field.focused_border_color = Colors.PRIMARY
+        self.help_btn.icon_color = Colors.TEXT_SECONDARY
         self.theme_btn.icon_color = Colors.TEXT_SECONDARY
         self.notification_btn.icon_color = Colors.TEXT_SECONDARY
         self.user_btn.icon_color = Colors.TEXT_SECONDARY

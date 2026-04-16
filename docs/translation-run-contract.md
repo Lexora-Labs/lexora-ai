@@ -2,6 +2,8 @@
 
 This document freezes the minimal contract between translation core and downstream consumers (CLI, future UI, automation).
 
+For **Flet UI–owned job rows and run-parameter snapshots** (in-memory `TranslationJob` / `JobStore`), see [`ui-data-model.md`](ui-data-model.md).
+
 ## Lifecycle Status
 
 - `dry-run`: validation successful, no translation executed.

@@ -20,11 +20,25 @@ from lexora.ui.theme import (
     cycle_theme_mode,
     theme_mode_icon,
 )
+
+THEME_STORAGE_KEY = "lexora_ui_theme_mode"
+_THEME_FROM_STORAGE = {
+    "dark": ft.ThemeMode.DARK,
+    "light": ft.ThemeMode.LIGHT,
+    "system": ft.ThemeMode.SYSTEM,
+}
+_THEME_TO_STORAGE = {
+    ft.ThemeMode.DARK: "dark",
+    ft.ThemeMode.LIGHT: "light",
+    ft.ThemeMode.SYSTEM: "system",
+}
+README_HELP_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/README.md"
 from lexora.ui.screens.projects import ProjectsScreen
 from lexora.ui.screens.translate import TranslateScreen
 from lexora.ui.screens.jobs import JobsScreen
 from lexora.ui.screens.settings import SettingsScreen
 from lexora.ui.screens.about import AboutScreen
+from lexora.ui.job_store import JobStore
 
 
 def attach_lexora_shell(
@@ -79,6 +93,8 @@ def attach_lexora_shell(
 
     layout_ref: dict[str, Optional[MainLayout]] = {"layout": None}
     projects_ref: dict[str, Optional[ProjectsScreen]] = {"screen": None}
+    translate_ref: dict[str, Optional[TranslateScreen]] = {"screen": None}
+    job_store = JobStore()
 
     def _open_workspace_tab() -> None:
         layout = layout_ref["layout"]
@@ -102,36 +118,63 @@ def attach_lexora_shell(
             ps.relocalize(t)
         layout.relocalize_shell(t, _rebuild_views())
 
+    def _cancel_job(job_id: str) -> bool:
+        ts = translate_ref["screen"]
+        return ts.cancel_job(job_id) if ts is not None else False
+
+    def _retry_job(job_id: str) -> bool:
+        ts = translate_ref["screen"]
+        return ts.retry_job(job_id) if ts is not None else False
+
+    def _delete_job(job_id: str) -> bool:
+        ts = translate_ref["screen"]
+        return ts.drop_queued_job(job_id) if ts is not None else False
+
+    def _apply_theme_mode(mode: ft.ThemeMode) -> None:
+        """Apply theme, persist choice, refresh chrome, and rebuild views (matches header toggle)."""
+        current_theme["mode"] = mode
+        apply_theme(page, mode)
+        if set_app_icon:
+            set_app_icon(page, mode)
+        layout = layout_ref["layout"]
+        if layout is not None:
+            layout.refresh_theme(theme_icon=theme_mode_icon(mode))
+            layout.replace_all_views(_rebuild_views())
+        page.bgcolor = Colors.BACKGROUND
+        try:
+            page.client_storage.set(THEME_STORAGE_KEY, _THEME_TO_STORAGE.get(mode, "system"))
+        except Exception:
+            pass
+        page.update()
+
     def _rebuild_views() -> dict[int, ft.Control]:
         ps = ProjectsScreen(page, t)
+        ts = TranslateScreen(page, job_store=job_store)
         projects_ref["screen"] = ps
+        translate_ref["screen"] = ts
         views = {
             nav_ids.PROJECTS: ps,
-            nav_ids.TRANSLATE: TranslateScreen(page),
-            nav_ids.JOBS: JobsScreen(page),
+            nav_ids.TRANSLATE: ts,
+            nav_ids.JOBS: JobsScreen(
+                page,
+                job_store=job_store,
+                on_cancel_job=_cancel_job,
+                on_retry_job=_retry_job,
+                on_delete_job=_delete_job,
+            ),
             nav_ids.SETTINGS: SettingsScreen(
                 page,
                 app_locale=current_locale["lang"],
                 on_app_language=_on_app_language_changed,
+                get_theme_mode=lambda: current_theme["mode"],
+                on_theme_mode=_apply_theme_mode,
             ),
             nav_ids.ABOUT: AboutScreen(page, t),
         }
         return views
 
     def _toggle_theme(_: ft.ControlEvent) -> None:
-        next_mode = cycle_theme_mode(current_theme["mode"])
-        current_theme["mode"] = next_mode
-        apply_theme(page, next_mode)
-        if set_app_icon:
-            set_app_icon(page, next_mode)
-
-        layout = layout_ref["layout"]
-        if layout is not None:
-            layout.refresh_theme(theme_icon=theme_mode_icon(next_mode))
-            layout.replace_all_views(_rebuild_views())
-
-        page.bgcolor = Colors.BACKGROUND
-        page.update()
+        _apply_theme_mode(cycle_theme_mode(current_theme["mode"]))
 
     def _on_new_translation(_: ft.ControlEvent) -> None:
         if layout_ref["layout"] is not None:
@@ -140,10 +183,19 @@ def attach_lexora_shell(
     def _on_new_project(_: ft.ControlEvent) -> None:
         _open_workspace_tab()
 
+    def _open_readme_help(_: ft.ControlEvent) -> None:
+        try:
+            page.launch_url(README_HELP_URL)
+        except Exception:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Unable to open README help link."))
+            page.snack_bar.open = True
+            page.update()
+
     main_layout = MainLayout(
         page=page,
         views=_rebuild_views(),
         on_toggle_theme=_toggle_theme,
+        on_open_help=_open_readme_help,
         theme_icon=theme_mode_icon(current_theme["mode"]),
         get_text=t,
         on_new_translation=_on_new_translation,
