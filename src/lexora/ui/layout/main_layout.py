@@ -13,9 +13,9 @@ from lexora.ui.theme import Colors
 
 
 PAGE_KEYS: list[tuple[str, str]] = [
-    ("page.library.title", "page.library.subtitle"),
     ("page.translate.title", "page.translate.subtitle"),
     ("page.jobs.title", "page.jobs.subtitle"),
+    ("page.library.title", "page.library.subtitle"),
     ("page.settings.title", "page.settings.subtitle"),
     ("page.about.title", "page.about.subtitle"),
 ]
@@ -38,6 +38,8 @@ class MainLayout(ft.Container):
         on_navigate: Optional[Callable[[int], None]] = None,
         on_toggle_theme: Optional[Callable[[ft.ControlEvent], None]] = None,
         on_open_help: Optional[Callable[[ft.ControlEvent], None]] = None,
+        on_change_language: Optional[Callable[[str], None]] = None,
+        current_language: str = "en",
         theme_icon: Optional[str] = None,
         get_text: Optional[Callable[[str], str]] = None,
         on_new_translation: Optional[Callable[[ft.ControlEvent], None]] = None,
@@ -49,6 +51,8 @@ class MainLayout(ft.Container):
         self._on_navigate = on_navigate
         self._on_toggle_theme = on_toggle_theme
         self._on_open_help = on_open_help
+        self._on_change_language = on_change_language
+        self._current_language = current_language if current_language in ("en", "vi") else "en"
         self._theme_icon = theme_icon
         self._get_text = get_text or (lambda k: k)
         self._on_new_translation = on_new_translation
@@ -59,9 +63,9 @@ class MainLayout(ft.Container):
 
     def _nav_labels(self) -> list[str]:
         keys = [
-            "nav.library",
             "nav.translate",
             "nav.jobs_queue",
+            "nav.library",
             "nav.settings",
             "nav.about",
         ]
@@ -84,6 +88,8 @@ class MainLayout(ft.Container):
             workspace_hint=self._get_text("app.workspace"),
             on_toggle_theme=self._on_toggle_theme,
             on_open_help=self._on_open_help,
+            on_change_language=self._on_change_language,
+            current_language=self._current_language,
             theme_icon=self._theme_icon,
             get_text=self._get_text,
             on_new_translation=self._on_new_translation,
@@ -202,10 +208,18 @@ class MainLayout(ft.Container):
         self._views = views
         self.content_area.content = self._get_current_view()
 
-    def relocalize_shell(self, get_text: Callable[[str], str], views: Dict[int, ft.Control]) -> None:
+    def relocalize_shell(
+        self,
+        get_text: Callable[[str], str],
+        views: Dict[int, ft.Control],
+        *,
+        current_language: Optional[str] = None,
+    ) -> None:
         """Update strings, navigation labels, and view roots after locale change."""
         self._get_text = get_text
         self._views = views
+        if current_language in ("en", "vi"):
+            self._current_language = current_language
         self.sidebar.set_labels(self._nav_labels())
         title_key, subtitle_key = PAGE_KEYS[self._current_index]
         self.header.apply_strings(

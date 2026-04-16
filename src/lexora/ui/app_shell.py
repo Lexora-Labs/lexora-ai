@@ -33,7 +33,7 @@ _THEME_TO_STORAGE = {
     ft.ThemeMode.SYSTEM: "system",
 }
 README_HELP_URL = "https://github.com/Lexora-Labs/lexora-ai/blob/main/README.md"
-from lexora.ui.screens.projects import ProjectsScreen
+from lexora.ui.screens.library import LibraryScreen
 from lexora.ui.screens.translate import TranslateScreen
 from lexora.ui.screens.jobs import JobsScreen
 from lexora.ui.screens.settings import SettingsScreen
@@ -92,18 +92,8 @@ def attach_lexora_shell(
     page.bgcolor = Colors.BACKGROUND
 
     layout_ref: dict[str, Optional[MainLayout]] = {"layout": None}
-    projects_ref: dict[str, Optional[ProjectsScreen]] = {"screen": None}
     translate_ref: dict[str, Optional[TranslateScreen]] = {"screen": None}
     job_store = JobStore()
-
-    def _open_workspace_tab() -> None:
-        layout = layout_ref["layout"]
-        ps = projects_ref["screen"]
-        if layout is not None:
-            layout.navigate_to(nav_ids.PROJECTS)
-        if ps is not None:
-            ps.select_workspace_tab()
-        page.update()
 
     def _on_app_language_changed(lang: str) -> None:
         if lang not in ("en", "vi"):
@@ -113,10 +103,7 @@ def attach_lexora_shell(
         layout = layout_ref["layout"]
         if layout is None:
             return
-        ps = projects_ref["screen"]
-        if ps is not None:
-            ps.relocalize(t)
-        layout.relocalize_shell(t, _rebuild_views())
+        layout.relocalize_shell(t, _rebuild_views(), current_language=current_locale["lang"])
 
     def _cancel_job(job_id: str) -> bool:
         ts = translate_ref["screen"]
@@ -148,12 +135,10 @@ def attach_lexora_shell(
         page.update()
 
     def _rebuild_views() -> dict[int, ft.Control]:
-        ps = ProjectsScreen(page, t)
-        ts = TranslateScreen(page, job_store=job_store)
-        projects_ref["screen"] = ps
+        library = LibraryScreen(page, get_text=t)
+        ts = TranslateScreen(page, job_store=job_store, get_text=t)
         translate_ref["screen"] = ts
         views = {
-            nav_ids.PROJECTS: ps,
             nav_ids.TRANSLATE: ts,
             nav_ids.JOBS: JobsScreen(
                 page,
@@ -161,7 +146,9 @@ def attach_lexora_shell(
                 on_cancel_job=_cancel_job,
                 on_retry_job=_retry_job,
                 on_delete_job=_delete_job,
+                get_text=t,
             ),
+            nav_ids.LIBRARY: library,
             nav_ids.SETTINGS: SettingsScreen(
                 page,
                 app_locale=current_locale["lang"],
@@ -181,7 +168,8 @@ def attach_lexora_shell(
             layout_ref["layout"].navigate_to(nav_ids.TRANSLATE)
 
     def _on_new_project(_: ft.ControlEvent) -> None:
-        _open_workspace_tab()
+        if layout_ref["layout"] is not None:
+            layout_ref["layout"].navigate_to(nav_ids.LIBRARY)
 
     def _open_readme_help(_: ft.ControlEvent) -> None:
         try:
@@ -196,6 +184,8 @@ def attach_lexora_shell(
         views=_rebuild_views(),
         on_toggle_theme=_toggle_theme,
         on_open_help=_open_readme_help,
+        on_change_language=_on_app_language_changed,
+        current_language=current_locale["lang"],
         theme_icon=theme_mode_icon(current_theme["mode"]),
         get_text=t,
         on_new_translation=_on_new_translation,

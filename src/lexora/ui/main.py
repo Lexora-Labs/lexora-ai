@@ -21,8 +21,8 @@ from lexora.ui.app_shell import attach_lexora_shell
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BRANDING_DIR = REPO_ROOT / "assets" / "branding"
-BRANDING_APP_ICON_ICO = BRANDING_DIR / "lexora-ai-icon.ico"
-BRANDING_APP_ICON_ASSET_PATH = "branding/lexora-ai-icon.ico"
+BRANDING_APP_ICON_ICO = REPO_ROOT / "lexora-ai-icon.ico"
+BRANDING_APP_ICON_ASSET_PATH = "./lexora-ai-icon.ico"
 BRANDING_LOGO_DARK_SVG = BRANDING_DIR / "lexora-ai-logo-dark-v2.2.svg"
 BRANDING_LOGO_LIGHT_SVG = BRANDING_DIR / "lexora-ai-logo-light-v2.2.svg"
 BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
@@ -57,7 +57,7 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
     window_obj = getattr(page_any, "window", None)
     if window_obj is not None and hasattr(window_obj, "icon"):
         setattr(window_obj, "icon", icon_path)
-    elif hasattr(page_any, "window_icon"):
+    if hasattr(page_any, "window_icon"):
         setattr(page_any, "window_icon", icon_path)
 
     if hasattr(page_any, "favicon"):
@@ -65,11 +65,16 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
             setattr(page_any, "favicon", logo_data_uri or logo_path.as_posix())
         elif has_ico:
             setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
+    try:
+        page.update()
+    except Exception:
+        pass
 
 
 def main(page: ft.Page) -> None:
     page.title = "Lexora AI"
     _set_app_icon(page, ft.ThemeMode.SYSTEM)
+    page.update()
     page_any = cast(Any, page)
     window_obj = getattr(page_any, "window", None)
     if window_obj is not None:
@@ -110,4 +115,9 @@ if __name__ == "__main__":
                 pass
         return 0
 
-    ft.app(target=main, port=_pick_port(), assets_dir=str(REPO_ROOT / "assets"))
+    ft.app(
+        target=main,
+        view=ft.AppView.FLET_APP,
+        port=_pick_port(),
+        assets_dir=str(REPO_ROOT / "assets"),
+    )

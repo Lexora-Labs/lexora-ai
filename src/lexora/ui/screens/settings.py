@@ -78,6 +78,7 @@ class SettingsScreen(ft.Container):
 
     def _build(self):
         """Build the settings UI."""
+        t = lambda key: translate(self._app_locale, key)
         cache_scope_value = self._get_storage_value(UI_CACHE_SCOPE_KEY, "global")
         if cache_scope_value not in ("global", "per-ebook", "disabled"):
             cache_scope_value = "global"
@@ -94,12 +95,12 @@ class SettingsScreen(ft.Container):
             content=ft.Row(
                 [
                     ft.OutlinedButton(
-                        "How to get API keys",
+                        t("settings.help.api_keys"),
                         icon=ft.icons.HELP_OUTLINE,
                         on_click=self._open_api_key_guide,
                     ),
                     ft.TextButton(
-                        "Open README Help",
+                        t("settings.help.readme"),
                         icon=ft.icons.MENU_BOOK,
                         on_click=self._open_readme_help,
                     ),
@@ -114,11 +115,11 @@ class SettingsScreen(ft.Container):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.KEY, color=Colors.TEXT_SECONDARY),
-                    ft.Text("API Providers", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(t("settings.section.providers"), size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                 ], spacing=8),
                 ft.Container(height=8),
                 ft.Text(
-                    "Configure your AI provider API keys. Keys are stored securely in environment variables.",
+                    t("settings.section.providers.subtitle"),
                     size=13,
                     color=Colors.TEXT_SECONDARY,
                 ),
@@ -132,7 +133,7 @@ class SettingsScreen(ft.Container):
         
         # Default Settings Section
         self.default_provider = ft.Dropdown(
-            label="Default Provider",
+            label=t("settings.default_provider"),
             options=[ft.dropdown.Option(p) for p in PROVIDERS_CONFIG.keys()],
             value="OpenAI",
             width=250,
@@ -142,7 +143,7 @@ class SettingsScreen(ft.Container):
         )
         
         self.default_model = ft.Dropdown(
-            label="Default Model",
+            label=t("settings.default_model"),
             options=[ft.dropdown.Option(m) for m in PROVIDERS_CONFIG["OpenAI"]["models"]],
             value="gpt-4o",
             width=250,
@@ -151,7 +152,7 @@ class SettingsScreen(ft.Container):
         )
         
         self.default_language = ft.Dropdown(
-            label="Default Target Language",
+            label=t("settings.default_target_language"),
             options=[
                 ft.dropdown.Option("vi", "Vietnamese"),
                 ft.dropdown.Option("en", "English"),
@@ -169,7 +170,7 @@ class SettingsScreen(ft.Container):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.TUNE, color=Colors.TEXT_SECONDARY),
-                    ft.Text("Default Settings", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(t("settings.section.defaults"), size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                 ], spacing=8),
                 ft.Container(height=16),
                 ft.Row([
@@ -185,7 +186,7 @@ class SettingsScreen(ft.Container):
         
         # Translation Settings Section
         self.cache_scope_dropdown = ft.Dropdown(
-            label="Cache Scope",
+            label=t("settings.cache_scope"),
             options=[
                 ft.dropdown.Option("global", "Global"),
                 ft.dropdown.Option("per-ebook", "Per-ebook"),
@@ -197,7 +198,7 @@ class SettingsScreen(ft.Container):
             border_radius=8,
         )
         self.cache_path_field = ft.TextField(
-            label="Cache Path",
+            label=t("settings.cache_path"),
             value=str(cache_path_value),
             width=420,
             bgcolor=Colors.BACKGROUND,
@@ -210,7 +211,7 @@ class SettingsScreen(ft.Container):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.TRANSLATE, color=Colors.TEXT_SECONDARY),
-                    ft.Text("Translation Settings", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(t("settings.section.translation"), size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                 ], spacing=8),
                 ft.Container(height=16),
                 ft.Row([
@@ -219,15 +220,15 @@ class SettingsScreen(ft.Container):
                 ], spacing=16, wrap=True),
                 ft.Container(height=12),
                 ft.Row([
-                    ft.Text("No cache:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    ft.Text(t("settings.no_cache"), size=14, color=Colors.TEXT_PRIMARY, width=150),
                     self.no_cache_switch,
-                    ft.Text("Override cache scope and disable cache usage for runs", size=13, color=Colors.TEXT_SECONDARY),
+                    ft.Text(t("settings.no_cache_hint"), size=13, color=Colors.TEXT_SECONDARY),
                 ]),
                 ft.Container(height=12),
                 ft.Row([
-                    ft.Text("Clear cache before run:", size=14, color=Colors.TEXT_PRIMARY, width=150),
+                    ft.Text(t("settings.clear_cache"), size=14, color=Colors.TEXT_PRIMARY, width=150),
                     self.clear_cache_switch,
-                    ft.Text("One-time clear on next run (auto-resets after execution)", size=13, color=Colors.TEXT_SECONDARY),
+                    ft.Text(t("settings.clear_cache_hint"), size=13, color=Colors.TEXT_SECONDARY),
                 ]),
             ]),
             padding=24,
@@ -255,7 +256,7 @@ class SettingsScreen(ft.Container):
             theme_mode, "system"
         )
         self.theme_dropdown = ft.Dropdown(
-            label="Theme",
+            label=t("settings.theme"),
             options=[
                 ft.dropdown.Option("dark", "Dark"),
                 ft.dropdown.Option("light", "Light"),
@@ -273,7 +274,7 @@ class SettingsScreen(ft.Container):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.PALETTE, color=Colors.TEXT_SECONDARY),
-                    ft.Text("Appearance", size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
+                    ft.Text(t("settings.section.appearance"), size=18, weight=ft.FontWeight.W_600, color=Colors.TEXT_PRIMARY),
                 ], spacing=8),
                 ft.Container(height=16),
                 ft.Row([
@@ -289,7 +290,7 @@ class SettingsScreen(ft.Container):
         # Save Button
         save_section = ft.Row([
             ft.ElevatedButton(
-                "Save Settings",
+                t("settings.save"),
                 icon=ft.icons.SAVE,
                 bgcolor=Colors.PRIMARY,
                 color=Colors.TEXT_PRIMARY,
@@ -297,7 +298,7 @@ class SettingsScreen(ft.Container):
                 on_click=self._save_settings,
             ),
             ft.OutlinedButton(
-                "Reset to Defaults",
+                t("settings.reset"),
                 icon=ft.icons.RESTORE,
                 height=45,
                 on_click=self._reset_settings,
@@ -380,11 +381,12 @@ class SettingsScreen(ft.Container):
 
     def _save_api_key(self, provider: str, api_key: str):
         """Save API key (placeholder)."""
+        t = lambda key: translate(self._app_locale, key)
         if api_key:
             # In a real app, this would securely save the key
-            self._show_snackbar(f"API key for {provider} saved successfully!", Colors.SUCCESS)
+            self._show_snackbar(t("settings.snackbar.api_saved").format(provider=provider), Colors.SUCCESS)
         else:
-            self._show_snackbar("Please enter an API key", Colors.WARNING)
+            self._show_snackbar(t("settings.snackbar.enter_api"), Colors.WARNING)
 
     def _on_app_language_dropdown(self, e: ft.ControlEvent) -> None:
         """Notify shell to relabel UI (EN/VI)."""
@@ -407,6 +409,7 @@ class SettingsScreen(ft.Container):
 
     def _save_settings(self, e):
         """Save all settings."""
+        t = lambda key: translate(self._app_locale, key)
         try:
             self.page.client_storage.set(UI_CACHE_SCOPE_KEY, self.cache_scope_dropdown.value or "global")
             self.page.client_storage.set(UI_CACHE_PATH_KEY, (self.cache_path_field.value or DEFAULT_GLOBAL_CACHE_PATH).strip())
@@ -414,10 +417,11 @@ class SettingsScreen(ft.Container):
             self.page.client_storage.set(UI_CLEAR_CACHE_KEY, bool(self.clear_cache_switch.value))
         except Exception:
             pass
-        self._show_snackbar("Settings saved successfully!", Colors.SUCCESS)
+        self._show_snackbar(t("settings.snackbar.saved"), Colors.SUCCESS)
 
     def _reset_settings(self, e):
         """Reset to default settings."""
+        t = lambda key: translate(self._app_locale, key)
         self.default_provider.value = "OpenAI"
         self.default_model.value = "gpt-4o"
         self.default_language.value = "vi"
@@ -440,7 +444,7 @@ class SettingsScreen(ft.Container):
 
             apply_theme(self.page, ft.ThemeMode.DARK)
             self.page.update()
-        self._show_snackbar("Settings reset to defaults", Colors.PRIMARY)
+        self._show_snackbar(t("settings.snackbar.reset"), Colors.PRIMARY)
 
     def _show_snackbar(self, message: str, color: str):
         """Show a snackbar notification."""

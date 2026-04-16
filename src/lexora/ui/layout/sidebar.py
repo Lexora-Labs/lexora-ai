@@ -13,9 +13,9 @@ _RAIL_COLLAPSED_WIDTH = 80
 
 
 _DESTINATION_ICONS: list[tuple[str, str]] = [
-    (ft.icons.FOLDER_OUTLINED, ft.icons.FOLDER),
     (ft.icons.TRANSLATE_OUTLINED, ft.icons.TRANSLATE),
     (ft.icons.WORK_HISTORY_OUTLINED, ft.icons.WORK_HISTORY),
+    (ft.icons.FOLDER_OUTLINED, ft.icons.FOLDER),
     (ft.icons.SETTINGS_OUTLINED, ft.icons.SETTINGS),
     (ft.icons.INFO_OUTLINED, ft.icons.INFO),
 ]

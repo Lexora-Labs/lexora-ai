@@ -4,7 +4,7 @@ Lexora AI Desktop UI Launcher (Flet 0.21.x)
 
 Usage:
     python run_ui.py              # Opens browser automatically (default)
-    python run_ui.py --no-browser # Desktop app only, no browser
+    python run_ui.py --no-browser # Desktop app window only, no browser
     python run_ui.py -nb          # Same as --no-browser
 """
 
@@ -28,8 +28,8 @@ from lexora.ui.app_shell import attach_lexora_shell
 
 REPO_ROOT = Path(__file__).resolve().parent
 BRANDING_DIR = REPO_ROOT / "assets" / "branding"
-BRANDING_APP_ICON_ICO = BRANDING_DIR / "lexora-ai-icon.ico"
-BRANDING_APP_ICON_ASSET_PATH = "branding/lexora-ai-icon.ico"
+BRANDING_APP_ICON_ICO = REPO_ROOT / "lexora-ai-icon.ico"
+BRANDING_APP_ICON_ASSET_PATH = "./lexora-ai-icon.ico"
 BRANDING_LOGO_DARK_SVG = BRANDING_DIR / "lexora-ai-logo-dark-v2.2.svg"
 BRANDING_LOGO_LIGHT_SVG = BRANDING_DIR / "lexora-ai-logo-light-v2.2.svg"
 BRANDING_LOGO_FALLBACK_SVG = BRANDING_DIR / "lexora-ai-logo.svg"
@@ -66,7 +66,7 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
     window_obj = getattr(page_any, "window", None)
     if window_obj is not None and hasattr(window_obj, "icon"):
         setattr(window_obj, "icon", icon_path)
-    elif hasattr(page_any, "window_icon"):
+    if hasattr(page_any, "window_icon"):
         setattr(page_any, "window_icon", icon_path)
 
     if hasattr(page_any, "favicon"):
@@ -74,6 +74,10 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
             setattr(page_any, "favicon", logo_data_uri or logo_path.as_posix())
         elif has_ico:
             setattr(page_any, "favicon", BRANDING_APP_ICON_ASSET_PATH)
+    try:
+        page.update()
+    except Exception:
+        pass
 
 
 def main(page: ft.Page) -> None:
@@ -113,7 +117,9 @@ if __name__ == "__main__":
         return 0
 
     port = _pick_port()
-    view_mode = ft.AppView.FLET_APP_HIDDEN if args.no_browser else ft.AppView.WEB_BROWSER
+    # Use real desktop window mode for --no-browser so OS window/taskbar icon
+    # overrides are applied by the native host (HIDDEN mode can keep default icon).
+    view_mode = ft.AppView.FLET_APP if args.no_browser else ft.AppView.WEB_BROWSER
     print(f"Starting Lexora UI on port {port if port else 'auto'}")
-    print(f"View mode: {'No browser auto-open (hidden app)' if args.no_browser else 'Web Browser (auto-open)'}")
+    print(f"View mode: {'Desktop app window (no browser auto-open)' if args.no_browser else 'Web Browser (auto-open)'}")
     ft.app(target=main, view=view_mode, port=port, assets_dir=str(REPO_ROOT / "assets"))

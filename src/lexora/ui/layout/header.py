@@ -23,6 +23,8 @@ class Header(ft.Container):
         workspace_hint: Optional[str] = None,
         on_toggle_theme: Optional[Callable[[ft.ControlEvent], None]] = None,
         on_open_help: Optional[Callable[[ft.ControlEvent], None]] = None,
+        on_change_language: Optional[Callable[[str], None]] = None,
+        current_language: str = "en",
         theme_icon: Optional[str] = None,
         get_text: Optional[Callable[[str], str]] = None,
         on_new_translation: Optional[Callable[[ft.ControlEvent], None]] = None,
@@ -35,6 +37,8 @@ class Header(ft.Container):
         self._workspace_hint = workspace_hint
         self._on_toggle_theme = on_toggle_theme
         self._on_open_help = on_open_help
+        self._on_change_language = on_change_language
+        self._current_language = current_language if current_language in ("en", "vi") else "en"
         self._theme_icon = theme_icon or ft.icons.DARK_MODE
         self._get_text = get_text or (lambda k: k)
         self._on_new_translation = on_new_translation
@@ -108,6 +112,44 @@ class Header(ft.Container):
             visible=self._on_open_help is not None,
             on_click=self._on_open_help,
         )
+        self.language_label = ft.Text(
+            self._language_text(),
+            size=11,
+            weight=ft.FontWeight.W_600,
+            color=Colors.TEXT_PRIMARY,
+        )
+        self.language_chevron = ft.Icon(
+            ft.icons.ARROW_DROP_DOWN,
+            size=18,
+            color=Colors.TEXT_SECONDARY,
+        )
+        self.language_menu = ft.PopupMenuButton(
+            visible=self._on_change_language is not None,
+            tooltip="Language",
+            items=[
+                ft.PopupMenuItem(text="EN", on_click=lambda _: self._set_language("en")),
+                ft.PopupMenuItem(text="VI", on_click=lambda _: self._set_language("vi")),
+            ],
+            content=ft.Container(
+                content=ft.Row(
+                    controls=[
+                        self.language_label,
+                        self.language_chevron,
+                    ],
+                    spacing=2,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    tight=True,
+                ),
+                width=64,
+                height=40,
+                padding=ft.padding.symmetric(horizontal=10, vertical=0),
+                alignment=ft.alignment.center,
+                bgcolor=Colors.SURFACE,
+                border=ft.border.all(1, Colors.BORDER),
+                border_radius=8,
+            ),
+        )
 
         self.user_btn = ft.IconButton(
             icon=ft.icons.ACCOUNT_CIRCLE_OUTLINED,
@@ -122,6 +164,7 @@ class Header(ft.Container):
                         title_col,
                         ft.Container(expand=True),
                         self.new_translation_btn,
+                        self.language_menu,
                         self.help_btn,
                         self.theme_btn,
                         self.notification_btn,
@@ -164,6 +207,11 @@ class Header(ft.Container):
         self.search_field.bgcolor = Colors.SURFACE
         self.search_field.border_color = Colors.BORDER
         self.search_field.focused_border_color = Colors.PRIMARY
+        self.language_label.color = Colors.TEXT_PRIMARY
+        self.language_chevron.color = Colors.TEXT_SECONDARY
+        if isinstance(self.language_menu.content, ft.Container):
+            self.language_menu.content.bgcolor = Colors.SURFACE
+            self.language_menu.content.border = ft.border.all(1, Colors.BORDER)
         self.help_btn.icon_color = Colors.TEXT_SECONDARY
         self.theme_btn.icon_color = Colors.TEXT_SECONDARY
         self.notification_btn.icon_color = Colors.TEXT_SECONDARY
@@ -171,6 +219,20 @@ class Header(ft.Container):
         self.bgcolor = Colors.SURFACE_VARIANT
         self.border = ft.border.only(bottom=ft.BorderSide(1, Colors.BORDER))
         self.new_translation_btn.bgcolor = Colors.PRIMARY
+
+    def _language_text(self) -> str:
+        return self._current_language.upper()
+
+    def _set_language(self, value: str) -> None:
+        value = value.strip().lower()
+        if value not in ("en", "vi"):
+            return
+        self._current_language = value
+        self.language_label.value = self._language_text()
+        if self._on_change_language is not None:
+            self._on_change_language(value)
+        if self.page:
+            self.update()
 
     def set_title(self, title: str, subtitle: Optional[str] = None) -> None:
         """Update header title."""
