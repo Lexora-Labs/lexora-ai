@@ -78,14 +78,19 @@ jobs:
             Select-Object -First 1
           if (-not $candle) { throw "candle.exe not found; WiX install failed?" }
           $wixBin = Split-Path $candle -Parent
-          New-Item -ItemType Directory -Force build-wix | Out-Null
+          $repo = (Get-Location).Path
+          $objDir = Join-Path $repo "build-wix"
+          $objFile = Join-Path $objDir "Product.wixobj"
+          $msiOut = Join-Path $repo "LexoraAI-windows-amd64.msi"
+          New-Item -ItemType Directory -Force $objDir | Out-Null
           $dist = (Resolve-Path "dist").Path
+          # candle -out must be the .wixobj file path, not a directory (CNDL0050 otherwise)
           & (Join-Path $wixBin "candle.exe") -arch x64 `
             "-dSourceDir=$dist" `
             "-dProductVersion=${{ steps.pkgver.outputs.wix_version }}" `
-            -out (Join-Path (Get-Location) "build-wix") `
-            "packaging\windows\Product.wxs"
-          & (Join-Path $wixBin "light.exe") -out "LexoraAI-windows-amd64.msi" (Join-Path (Get-Location) "build-wix\Product.wixobj")
+            -out $objFile `
+            (Join-Path $repo "packaging\windows\Product.wxs")
+          & (Join-Path $wixBin "light.exe") -out $msiOut $objFile
 
       - name: Zip executable (avoids raw .exe download blocks)
         shell: pwsh
