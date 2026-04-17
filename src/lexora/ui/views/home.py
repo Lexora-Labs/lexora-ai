@@ -268,13 +268,26 @@ class HomeView(ft.Container):
             
             translator = Translator(provider=provider)
 
-            # 2. Prepare output path
+            # 2. Prepare output path (align with Translate screen: library/ + provider + lang; optional LEXORA_UI_OUTPUT_DIR)
+            from lexora.ui.screens.translate import (
+                build_ui_default_output_file_path,
+                provider_slug_for_output_filename,
+                resolve_unique_output_path,
+            )
+
             source = Path(self.selected_file)
-            output_dir_env = os.getenv("LEXORA_UI_OUTPUT_DIR")
-            output_dir = Path(output_dir_env) if output_dir_env else source.parent
-            output_dir.mkdir(parents=True, exist_ok=True)
-            ext = ".md" if source.suffix.lower() == ".md" else ".txt"
-            output_path = str(output_dir / f"{source.stem}_{target_lang}{ext}")
+            plabel = provider_label or "OpenAI"
+            output_dir_env = (os.getenv("LEXORA_UI_OUTPUT_DIR") or "").strip()
+            if output_dir_env:
+                out_dir = Path(output_dir_env).expanduser()
+                out_dir.mkdir(parents=True, exist_ok=True)
+                ext = ".md" if source.suffix.lower() == ".md" else ".txt"
+                base = out_dir / f"{source.stem}_{provider_slug_for_output_filename(plabel)}_{target_lang}{ext}"
+                output_path = str(resolve_unique_output_path(base))
+            else:
+                out = build_ui_default_output_file_path(str(source), str(target_lang), plabel)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                output_path = str(out)
 
             # 3. Translate
             self.progress_panel.set_progress(0.4, "Translating... this may take a while")

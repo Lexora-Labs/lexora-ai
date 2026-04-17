@@ -62,6 +62,42 @@ UI_PROVIDER_TO_CANONICAL = {
 load_dotenv()
 
 
+def default_ui_library_dir() -> Path:
+    """Directory for UI default translation outputs (under the process working directory)."""
+    return (Path.cwd() / "library").resolve()
+
+
+def provider_slug_for_output_filename(provider_label: str) -> str:
+    """Filesystem-safe provider token from a UI provider label."""
+    key = (provider_label or "").strip()
+    canonical = UI_PROVIDER_TO_CANONICAL.get(key) or canonical_provider_name(key)
+    return canonical.replace("-", "_")
+
+
+def resolve_unique_output_path(path: Path) -> Path:
+    """If ``path`` already exists, return ``name (n).ext`` in the same folder with the lowest free ``n`` >= 1."""
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    parent = path.parent
+    n = 1
+    while True:
+        candidate = parent / f"{stem} ({n}){suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+def build_ui_default_output_file_path(input_file: str, target_lang: str, provider_label: str) -> Path:
+    """Absolute path for the Translate screen default output (library folder, provider/lang in basename)."""
+    source = Path(input_file)
+    out_dir = default_ui_library_dir()
+    base = out_dir / f"{source.stem}_{provider_slug_for_output_filename(provider_label)}_{target_lang}{source.suffix}"
+    return resolve_unique_output_path(base)
+
+
+
 def _apply_epub_doc_selection(
     docs: List[Any],
     limit_docs: Optional[int],
@@ -169,6 +205,8 @@ class TranslateScreen(ft.Container):
         self._active_store_job_id: Optional[str] = None
         self._queued_jobs: Deque[tuple[str, Dict[str, Any]]] = deque()
         self._job_requests: Dict[str, Dict[str, Any]] = {}
+        self._output_path_user_modified = False
+        self._suppress_output_field_change = False
         self._build()
 
     def _build(self) -> None:
@@ -270,6 +308,7 @@ class TranslateScreen(ft.Container):
             width=500,
             height=CONTROL_HEIGHT,
             text_size=CONTROL_TEXT_SIZE,
+            on_change=self._on_output_file_field_change,
         )
         self.output_reset_btn = ft.OutlinedButton(
             self._t("translate.reset_default"),
@@ -475,6 +514,7 @@ class TranslateScreen(ft.Container):
             if picked_path:
                 self.file_path.value = str(Path(picked_path).parent)
                 self.file_path.visible = True
+                self._output_path_user_modified = False
                 self._refresh_output_file_default(force=True)
                 self.translate_btn.disabled = False
                 self._log_ui_action(f"Selected file: {f.name}")
@@ -491,6 +531,11 @@ class TranslateScreen(ft.Container):
         """Keep output-file default synced with selected target language."""
         self._refresh_output_file_default()
         self._page.update()
+
+    def _on_output_file_field_change(self, _: ft.ControlEvent) -> None:
+        if self._suppress_output_field_change:
+            return
+        self._output_path_user_modified = True
 
     def _toggle_advanced_config(self, _: ft.ControlEvent) -> None:
         self._advanced_expanded = not self._advanced_expanded
@@ -519,22 +564,32 @@ class TranslateScreen(ft.Container):
         models = _provider_models(provider)
         self.model_dropdown.options = [ft.dropdown.Option(m) for m in models]
         self.model_dropdown.value = models[0] if models else None
+        self._refresh_output_file_default()
         self._page.update()
 
-    def _build_default_output_path(self, input_file: str, target_lang: str) -> str:
-        source = Path(input_file)
-        # Keep source extension and output in the same folder by default.
-        return str(source.parent / f"{source.stem}-{target_lang}{source.suffix}")
+    def _build_default_output_path(self, input_file: str, target_lang: str, provider_label: str) -> str:
+        return str(build_ui_default_output_file_path(input_file, target_lang, provider_label))
 
     def _refresh_output_file_default(self, *, force: bool = False) -> None:
         if not self._selected_file:
             return
         current_value = (self.output_file_field.value or "").strip()
-        if force or not current_value:
-            target_lang = self.target_language_dropdown.value or "vi"
-            self.output_file_field.value = self._build_default_output_path(self._selected_file, target_lang)
+        if self._output_path_user_modified and current_value and not force:
+            return
+        target_lang = self.target_language_dropdown.value or "vi"
+        provider_label = self.provider_dropdown.value or "OpenAI"
+        self._suppress_output_field_change = True
+        try:
+            self.output_file_field.value = self._build_default_output_path(
+                self._selected_file, target_lang, provider_label
+            )
+        finally:
+            self._suppress_output_field_change = False
+        if force:
+            self._output_path_user_modified = False
 
     def _on_reset_output_default(self, _: ft.ControlEvent) -> None:
+        self._output_path_user_modified = False
         self._refresh_output_file_default(force=True)
         self._page.update()
 
@@ -808,14 +863,21 @@ class TranslateScreen(ft.Container):
             raise ValueError(f"Provider '{provider_label}' is not configured")
         return provider
 
-    def _build_output_path(self, input_file: str, target_lang: str, override: str = "") -> str:
-        if override:
-            output_path = Path(override)
+    def _build_output_path(
+        self,
+        input_file: str,
+        target_lang: str,
+        override: str = "",
+        *,
+        provider_label: str = "OpenAI",
+    ) -> str:
+        if override.strip():
+            output_path = Path(override.strip()).expanduser()
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            return str(output_path)
-        default_path = Path(self._build_default_output_path(input_file, target_lang))
+            return str(resolve_unique_output_path(output_path))
+        default_path = Path(self._build_default_output_path(input_file, target_lang, provider_label))
         default_path.parent.mkdir(parents=True, exist_ok=True)
-        return str(default_path)
+        return str(resolve_unique_output_path(default_path))
 
     def _run_translation(self, store_job_id: str, request: Dict[str, Any]) -> None:
         self._job_store.mark_run_started(store_job_id)
@@ -906,6 +968,7 @@ class TranslateScreen(ft.Container):
                 request["input_file"],
                 target_lang,
                 override=str(request.get("output_override") or ""),
+                provider_label=str(request["provider_label"]),
             )
             self._job_store.set_output_path(store_job_id, output_file)
             report_payload.update(

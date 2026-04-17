@@ -100,6 +100,8 @@ From the UI:
 - Use **Jobs** to monitor queue/running/completed states, view run log, cancel active jobs, and re-run failed jobs.
 - Use **Settings** for cache behavior, provider guidance links, and app appearance/language preferences.
 
+Default translated files go under a **`library`** folder in the app’s current working directory, named `{original_stem}_{provider}_{target_lang}{same_extension}` (with ` (n)` before the extension if the name is already taken). You can override the path in **Translate** before each run.
+
 #### Recommended first run
 
 1. Configure one provider API key in **Settings** (or `.env`).
@@ -108,7 +110,28 @@ From the UI:
    - Provider: `OpenAI` (or any configured provider)
    - Target language: `vi`
 4. Start the translation and monitor progress in **Jobs**.
-5. When completed, use job actions (**...**) to open the translated output file/location.
+5. When completed, use job actions (**...**) to open the translated output file/location (by default under `library/` in the directory from which you started the UI).
+
+#### Desktop packaging (Windows / macOS)
+
+Local one-file build (requires [Flet](https://flet.dev/docs/cli/flet-pack) CLI from your `flet` install):
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+
+# Windows (PyInstaller ``;`` separator for --add-data)
+flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-name "Lexora AI" ^
+  --add-data "assets;assets" --add-data "lexora-ai-icon.ico;."
+
+# macOS / Linux (``:`` separator)
+flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-name "Lexora AI" \
+  --add-data "assets:assets" --add-data "lexora-ai-icon.ico:."
+```
+
+Artifacts land under `dist/` (for example `LexoraAI.exe` on Windows, `LexoraAI.app` on macOS).
+
+**GitHub Actions:** pushing a version tag matching `v*` runs `.github/workflows/desktop-release.yml`, which builds on `windows-latest` and `macos-latest`, attaches both zip files to a GitHub Release, and uses the same `flet pack` options. Use **Actions → Desktop release → Run workflow** for a build-only run (download zips from the workflow summary).
 
 ### Command Line
 
