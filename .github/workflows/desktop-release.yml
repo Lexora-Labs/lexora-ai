@@ -62,11 +62,21 @@ jobs:
       - name: Locate WiX Toolset (candle/light)
         shell: pwsh
         run: |
-          choco install wixtoolset --version=3.14.1 -y --no-progress
           $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
             ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
+
+          if (-not $candle) {
+            Write-Host "WiX not found, installing wixtoolset..."
+            choco install wixtoolset --version=3.14.1 -y --no-progress
+            $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
+              ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
+              Where-Object { Test-Path $_ } |
+              Select-Object -First 1
+          } else {
+            Write-Host "WiX already available, skipping installation."
+          }
 
           if (-not $candle) {
             throw "WiX candle.exe not found on runner. Install WiX or add choco install wixtoolset."
