@@ -13,167 +13,36 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  PYTHON_VERSION: "3.12"
+  APP_NAME: "LexoraAI"
+  APP_ENTRY: "main.py" # TODO: đổi thành đúng entry file của bạn, ví dụ: src/lexora_ai/main.py
+
 jobs:
   package-windows:
     name: Pack (Windows)
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build EXE (Flet)
+      - name: Build EXE (flet pack -> dist\LexoraAI.exe)
         shell: pwsh
         run: |
           python -m venv .venv
           .\.venv\Scripts\Activate.ps1
+
           python -m pip install --upgrade pip
-          # Pin toolchain used by repository packaging flow
-          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
-          flet pack -y -v src/lexora/ui/main.py `
-            -i lexora-ai-icon.ico `
-            -n LexoraAI `
-            --product-name "Lexora AI" `
-            --add-data "assets;assets" `
-            --add-data "lexora-ai-icon.ico;."
+          # flet pack relies on PyInstaller under the hood → must install pyinstaller
+          pip install flet pyinstaller pillow
 
-          if (-not (Test-Path .\dist\LexoraAI.exe)) {
-            Write-Error "dist\\LexoraAI.exe not found after build. Check entry script path.";
-            Get-ChildItem -Recurse dist | Select-Object FullName;
-            exit 1
-          }
+          # Build single EXE into dist/
+          if (Test-Path .\dist) { Remove-Item .\dist -Recurse -Force }
+          flet pack "${{ env.APP_ENTRY }}" --name "${{ env.APP_NAME }}" --distpath dist --yes
 
-      - name: Create ZIP artifact
-        shell: pwsh
-        run: |
-          if (Test-Path LexoraAI-windows-amd64.zip) { Remove-Item LexoraAI-windows-amd64.zip -Force }
-          Compress-Archive -Path dist\* -DestinationPath LexoraAI-windows-amd64.zip
-
-      - name: Install WiX Toolset (v3)
-        shell: pwsh
-        run: |
-          # WiX v3 provides candle.exe/light.exe
-          choco install wixtoolset --version=3.14.1 -y
-
-      - name: Build MSI (WiX)
-        shell: pwsh
-        run: |
-          # IMPORTANT: write intermediates to RUNNER_TEMP to avoid workspace ACL/locking issues
-          $wixOut = Join-Path $env:RUNNER_TEMP "wixout"
-          Remove-Item $wixOut -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force $wixOut | Out-Null
-
-          $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
-            ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
-            Where-Object { Test-Path $_ } |
-            Select-Object -First 1
-          if (-not $candle) { throw "candle.exe not found; WiX install failed?" }
-
-          $wixBin = Split-Path $candle -Parent
-          $repo = (Get-Location).Path
-          $objFile = Join-Path $wixOut "Product.wixobj"
-          if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
-            $plain = $Matches[1]
-          } else {
-            $plain = "0.0.$($env:GITHUB_RUN_NUMBER)"
-          }
-          $parts = @($plain -split '\.' | ForEach-Object { ($_ -replace '[^0-9].*$','') })
-          if ($parts.Count -eq 0) { $parts = @(0,0,0) }
-          while ($parts.Count -lt 4) { $parts += 0 }
-          $wixVersion = ($parts[0..3] | ForEach-Object { [int]$_ }) -join '.'
-          $dist = (Resolve-Path "dist").Path
-
-          # candle -out must target Product.wixobj file path.
-          & (Join-Path $wixBin "candle.exe") -arch x64 `
-            "-dSourceDir=$dist" `
-            "-dProductVersion=$wixVersion" `
-            -out $objFile `
-            (Join-Path $repo "packaging\windows\Product.wxs")
-
-          & (Join-Path $wixBin "light.exe") -ext WixUIExtension -out "LexoraAI-windows-amd64.msi" $objFile
-
-      - name: Upload artifacts (Windows)
-        uses: actions/upload-artifact@v4
-        with:
-          name: lexora-desktop-windows
-          path: |
-            LexoraAI-windows-amd64.zip
-            LexoraAI-windows-amd64.msi
-
-  package-macos:
-    name: Pack (macOS)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build macOS app (Flet)
-        shell: bash
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          python -m pip install --upgrade pip
-          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
-
-          # Keep CI independent from Flutter SDK by using pack.
-          flet pack -y -v src/lexora/ui/main.py \
-            -i lexora-ai-icon.ico \
-            -n LexoraAI \
-            --product-name "Lexora AI" \
-            --add-data "assets:assets" \
-            --add-data "lexora-ai-icon.ico:."
-
-          test -d "dist/LexoraAI.app"
-          zip -ry "LexoraAI-macos-arm64.zip" dist/LexoraAI.app
-
-          rm -rf pkgroot
-          mkdir -p pkgroot
-          cp -R "dist/LexoraAI.app" "pkgroot/"
-          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
-            VER="${BASH_REMATCH[1]}"
-          else
-            VER="0.0.${GITHUB_RUN_NUMBER}"
-          fi
-          pkgbuild \
-            --root pkgroot \
-            --identifier com.lexoralabs.lexora-ai \
-            --version "${VER}" \
-            --install-location /Applications \
-            LexoraAI-macos-arm64.pkg
-
-      - name: Upload artifacts (macOS)
-        uses: actions/upload-artifact@v4
-        with:
-          name: lexora-desktop-macos
-          path: |
-            LexoraAI-macos-arm64.zip
-            LexoraAI-macos-arm64.pkg
-
-  release:
-    name: Publish GitHub Release
-    needs: [package-windows, package-macos]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          pattern: lexora-desktop-*
-          merge-multiple: true
-
-      - name: Create/Update GitHub Release and upload assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes ""
-          gh release upload "$tag" release-assets/* --clobber
