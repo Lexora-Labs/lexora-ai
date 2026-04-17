@@ -24,9 +24,10 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+from lexora.runtime_paths import lexora_repo_root
 from lexora.ui.app_shell import attach_lexora_shell
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = lexora_repo_root(anchor_file=Path(__file__))
 BRANDING_DIR = REPO_ROOT / "assets" / "branding"
 BRANDING_APP_ICON_ICO = REPO_ROOT / "lexora-ai-icon.ico"
 BRANDING_APP_ICON_ASSET_PATH = "./lexora-ai-icon.ico"
