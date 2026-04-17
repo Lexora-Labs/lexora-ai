@@ -1,6 +1,7 @@
 # Lexora AI
 
 Lexora AI is an open-source, AI-assisted eBook translation tool. It helps you translate EPUB, MOBI, Word, and Markdown while keeping structure and formatting as intact as the pipeline allows.
+![Translate](https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/screenshots/translate.png?raw=true)
 
 You can use it in two ways:
 
@@ -126,19 +127,11 @@ For deeper behavior (document selection, structured batching, reports), see `**d
 
 ## Screenshots
 
-```markdown
-![Translate]([docs/screenshots/translate.png](https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/screenshots/translate.png?raw=true))
-```
-
-
 | Area      | Suggested file                   |
 | --------- | -------------------------------- |
 | Translate | `docs/screenshots/translate.png` |
 | Jobs      | `docs/screenshots/jobs.png`      |
 | Settings  | `docs/screenshots/settings.png`  |
-
-
-
 
 ---
 
