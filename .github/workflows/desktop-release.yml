@@ -1,6 +1,8 @@
 # Pack Lexora AI desktop UI (Flet + PyInstaller) for Windows and macOS.
-# - Push tag v* → GitHub Release uploads LexoraAI.exe (Windows) and LexoraAI-macos-arm64.dmg (macOS).
-# - workflow_dispatch → build only; download those binaries from the workflow run artifacts.
+# - Push tag v* → GitHub Release uploads:
+#     Windows: LexoraAI-windows-amd64.zip (LexoraAI.exe inside, friendlier download) + LexoraAI-windows-amd64.msi (WiX)
+#     macOS:   LexoraAI-macos-arm64.zip (LexoraAI.app bundle) + LexoraAI-macos-arm64.pkg (installer; macOS has no MSI)
+# - workflow_dispatch → same artifacts on the workflow run summary.
 
 name: Desktop release
 
@@ -46,10 +48,56 @@ jobs:
         run: |
           if (-not (Test-Path "dist/LexoraAI.exe")) { Get-ChildItem dist; throw "Expected dist/LexoraAI.exe" }
 
+      - name: Set package version (WiX needs x.x.x.x)
+        id: pkgver
+        shell: pwsh
+        run: |
+          $ref = $env:GITHUB_REF
+          if ($ref -match '^refs/tags/v(.+)$') {
+            $plain = $Matches[1]
+          } else {
+            $plain = "0.0.$($env:GITHUB_RUN_NUMBER)"
+          }
+          $parts = @($plain -split '\.' | ForEach-Object { ($_ -replace '[^0-9].*$','') })
+          if ($parts.Count -eq 0) { $parts = @(0,0,0) }
+          while ($parts.Count -lt 4) { $parts += 0 }
+          $wix = ($parts[0..3] | ForEach-Object { [int]$_ }) -join '.'
+          "plain_version=$plain" >> $env:GITHUB_OUTPUT
+          "wix_version=$wix" >> $env:GITHUB_OUTPUT
+          Write-Host "WiX ProductVersion=$wix (from $plain)"
+
+      - name: Install WiX Toolset (MSI authoring)
+        run: choco install wixtoolset -y --no-progress
+
+      - name: Build MSI (WiX candle + light)
+        shell: pwsh
+        run: |
+          $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+          if (-not $candle) { throw "candle.exe not found; WiX install failed?" }
+          $wixBin = Split-Path $candle -Parent
+          New-Item -ItemType Directory -Force build-wix | Out-Null
+          $dist = (Resolve-Path "dist").Path
+          & (Join-Path $wixBin "candle.exe") -arch x64 `
+            "-dSourceDir=$dist" `
+            "-dProductVersion=${{ steps.pkgver.outputs.wix_version }}" `
+            -out (Join-Path (Get-Location) "build-wix") `
+            "packaging\windows\Product.wxs"
+          & (Join-Path $wixBin "light.exe") -out "LexoraAI-windows-amd64.msi" (Join-Path (Get-Location) "build-wix\Product.wixobj")
+
+      - name: Zip executable (avoids raw .exe download blocks)
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\LexoraAI.exe" -DestinationPath "LexoraAI-windows-amd64.zip" -Force
+
       - uses: actions/upload-artifact@v4
         with:
           name: lexora-desktop-windows-amd64
-          path: dist/LexoraAI.exe
+          path: |
+            LexoraAI-windows-amd64.zip
+            LexoraAI-windows-amd64.msi
 
   package-macos:
     name: Pack (macOS)
@@ -79,19 +127,53 @@ jobs:
           --add-data "assets:assets"
           --add-data "lexora-ai-icon.ico:."
 
-      - name: Create macOS disk image (.dmg)
+      - name: Verify app bundle
         run: |
-          set -eux
           ls -la dist
           test -d "dist/LexoraAI.app"
-          # Single-file installer users expect on macOS (UDZO = compressed read-only DMG)
-          hdiutil create -volname "Lexora AI" -srcfolder "dist/LexoraAI.app" -ov -format UDZO "LexoraAI-macos-arm64.dmg"
-          ls -la LexoraAI-macos-arm64.dmg
+
+      - name: Set package version (pkgbuild)
+        id: pkgver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
+            VER="${BASH_REMATCH[1]}"
+          else
+            VER="0.0.${GITHUB_RUN_NUMBER}"
+          fi
+          VER="${VER//+/-}"
+          echo "plain_version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=${VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Zip .app bundle (single download-friendly archive)
+        run: |
+          set -euxo pipefail
+          cd dist
+          zip -ry ../LexoraAI-macos-arm64.zip LexoraAI.app
+          cd ..
+          ls -la LexoraAI-macos-arm64.zip
+
+      - name: Build macOS installer package (.pkg)
+        run: |
+          set -euxo pipefail
+          rm -rf pkgroot
+          mkdir -p pkgroot
+          cp -R "dist/LexoraAI.app" "pkgroot/"
+          pkgbuild \
+            --root pkgroot \
+            --identifier com.lexoralabs.lexora-ai \
+            --version "${{ steps.pkgver.outputs.pkg_version }}" \
+            --install-location /Applications \
+            LexoraAI-macos-arm64.pkg
+          ls -la LexoraAI-macos-arm64.pkg
 
       - uses: actions/upload-artifact@v4
         with:
           name: lexora-desktop-macos-arm64
-          path: LexoraAI-macos-arm64.dmg
+          path: |
+            LexoraAI-macos-arm64.zip
+            LexoraAI-macos-arm64.pkg
 
   release:
     name: Publish GitHub Release
@@ -109,7 +191,7 @@ jobs:
           merge-multiple: true
 
       - name: List release files
-        run: find release-assets -type f -maxdepth 3 -print
+        run: find release-assets -type f -maxdepth 2 -print
 
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
@@ -118,7 +200,9 @@ jobs:
           name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            release-assets/LexoraAI.exe
-            release-assets/LexoraAI-macos-arm64.dmg
+            release-assets/LexoraAI-windows-amd64.zip
+            release-assets/LexoraAI-windows-amd64.msi
+            release-assets/LexoraAI-macos-arm64.zip
+            release-assets/LexoraAI-macos-arm64.pkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -114,7 +114,9 @@ Default translated files go under a **`library`** folder in the app’s current 
 
 #### Desktop packaging (Windows / macOS)
 
-Local one-file build (requires [Flet](https://flet.dev/docs/cli/flet-pack) CLI from your `flet` install and **PyInstaller**, which `flet pack` invokes):
+**MSI is a Windows-only format.** macOS uses **`.pkg`** (installer package) instead; both are produced in CI alongside **`.zip`** archives so browsers and SmartScreen are less likely to block downloads than a bare `.exe`.
+
+Local one-file build (requires [Flet](https://flet.dev/docs/cli/flet-pack) and **PyInstaller**):
 
 ```bash
 pip install -r requirements.txt
@@ -132,9 +134,16 @@ flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-n
   --add-data "assets:assets" --add-data "lexora-ai-icon.ico:."
 ```
 
-Artifacts land under `dist/` (for example `LexoraAI.exe` on Windows, `LexoraAI.app` on macOS). To ship macOS builds, wrap the `.app` in a **DMG** (for example `hdiutil create -volname "Lexora AI" -srcfolder dist/LexoraAI.app -ov -format UDZO LexoraAI.dmg`).
+Artifacts land under `dist/` (`LexoraAI.exe` on Windows, `LexoraAI.app` on macOS). To ship a **Windows MSI** locally, install [WiX Toolset v3.11+](https://wixtoolset.org/) and run `candle` / `light` as described in `packaging/windows/Product.wxs`. To ship a **macOS `.pkg`**, use `pkgbuild` with a staging folder that contains `LexoraAI.app` and `--install-location /Applications`.
 
-**GitHub Actions:** a tag `v*` runs `.github/workflows/desktop-release.yml`, which uploads **`LexoraAI.exe`** (Windows) and **`LexoraAI-macos-arm64.dmg`** (compressed disk image of the `.app`) to the GitHub Release—no extra zip layer. Workflow-only runs still expose those files as downloadable **artifacts** (GitHub may wrap downloads in a zip once; the asset inside is the `.exe` or `.dmg`). Use **Actions → Desktop release → Run workflow** for a build-only run.
+**GitHub Actions:** a tag `v*` runs `.github/workflows/desktop-release.yml`, which uploads:
+
+- **`LexoraAI-windows-amd64.zip`** — `LexoraAI.exe` inside (recommended download).
+- **`LexoraAI-windows-amd64.msi`** — per-machine WiX installer (installs under `Program Files`).
+- **`LexoraAI-macos-arm64.zip`** — the `LexoraAI.app` bundle.
+- **`LexoraAI-macos-arm64.pkg`** — installs the app into `/Applications`.
+
+Use **Actions → Desktop release → Run workflow** for a build-only run (download the same files from the workflow artifacts).
 
 ### Command Line
 
