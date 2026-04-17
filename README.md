@@ -126,7 +126,9 @@ For deeper behavior (document selection, structured batching, reports), see `**d
 
 ## Screenshots
 
-Add images under `**docs/screenshots/**` and link them here (filenames are suggestions).
+```markdown
+![Translate]([docs/screenshots/translate.png](https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/screenshots/translate.png?raw=true))
+```
 
 
 | Area      | Suggested file                   |
@@ -136,9 +138,7 @@ Add images under `**docs/screenshots/**` and link them here (filenames are sugge
 | Settings  | `docs/screenshots/settings.png`  |
 
 
-```markdown
-![Translate](docs/screenshots/translate.png)
-```
+
 
 ---
 
