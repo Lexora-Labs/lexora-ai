@@ -46,3 +46,120 @@ jobs:
           if (Test-Path .\dist) { Remove-Item .\dist -Recurse -Force }
           flet pack "${{ env.APP_ENTRY }}" --name "${{ env.APP_NAME }}" --distpath dist --yes
 
+          if (-not (Test-Path ".\dist\${{ env.APP_NAME }}.exe")) {
+            Write-Error "dist\${{ env.APP_NAME }}.exe not found. Check APP_ENTRY path and flet pack output."
+            Get-ChildItem -Recurse . | Select-Object FullName
+            exit 1
+          }
+
+      - name: Create ZIP artifact (Windows)
+        shell: pwsh
+        run: |
+          $zipName = "${{ env.APP_NAME }}-windows-amd64.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path dist\* -DestinationPath $zipName
+
+      - name: Locate WiX Toolset (candle/light)
+        shell: pwsh
+        run: |
+          $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+
+          if (-not $candle) {
+            throw "WiX candle.exe not found on runner. Install WiX or add choco install wixtoolset."
+          }
+
+          $wixBin = Split-Path $candle -Parent
+          "WIX_BIN=$wixBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "WiX found at: $wixBin"
+
+      - name: Build MSI (WiX)
+        shell: pwsh
+        run: |
+          # Use RUNNER_TEMP for intermediates to avoid workspace permission/locking issues
+          $wixOut = Join-Path $env:RUNNER_TEMP "wixout"
+          Remove-Item $wixOut -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $wixOut | Out-Null
+
+          $sourceDir = (Resolve-Path "dist").Path
+
+          # MSI version must be numeric n.n.n.n — derive from tag vX.Y.Z
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.TrimStart('v')
+          if ($ver -match '^\d+\.\d+\.\d+$') { $ver = "$ver.0" }
+          if ($ver -notmatch '^\d+\.\d+\.\d+\.\d+$') { $ver = "0.0.0.0" }
+
+          & (Join-Path $env:WIX_BIN "candle.exe") -arch x64 `
+            "-dSourceDir=$sourceDir" `
+            "-dProductVersion=$ver" `
+            -out $wixOut `
+            "packaging\windows\Product.wxs"
+
+          # If Product.wxs uses WixUI_* you must link WixUIExtension
+          & (Join-Path $env:WIX_BIN "light.exe") -ext WixUIExtension `
+            -out "${{ env.APP_NAME }}-windows-amd64.msi" `
+            (Join-Path $wixOut "Product.wixobj")
+
+      - name: Upload artifacts (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexora-desktop-windows
+          path: |
+            ${{ env.APP_NAME }}-windows-amd64.zip
+            ${{ env.APP_NAME }}-windows-amd64.msi
+
+  package-macos:
+    name: Pack (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build macOS app (flet build)
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install flet
+
+          flet build macos --bundle-id com.appvity.lexoraai --yes
+
+          rm -f LexoraAI-macos.zip
+          zip -r LexoraAI-macos.zip build
+
+      - name: Upload artifacts (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexora-desktop-macos
+          path: |
+            LexoraAI-macos.zip
+
+  release:
+    name: Publish GitHub Release
+    needs: [package-windows, package-macos]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: lexora-desktop-*
+          merge-multiple: true
+
+      - name: Create/Update GitHub Release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes ""
+          gh release upload "$tag" release-assets/* --clobber
