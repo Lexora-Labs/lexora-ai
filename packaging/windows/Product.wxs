@@ -16,6 +16,9 @@
 
     <!-- Installer UI -->
     <Property Id="WIXUI_INSTALLDIR" Value="APPFOLDER"/>
+    <!-- Required by WixUI_Advanced -->
+    <Property Id="ApplicationFolderName" Value="Lexora AI"/>
+    <Property Id="WixAppFolder" Value="WixPerMachineFolder"/>
     <UIRef Id="WixUI_Advanced"/>
     <UIRef Id="WixUI_ErrorProgressText"/>
 
