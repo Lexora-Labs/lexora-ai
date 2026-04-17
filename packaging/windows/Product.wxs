@@ -1,45 +1,106 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  WiX 3.11 — minimal per-machine MSI wrapping the PyInstaller / flet pack output.
-  Build (from repo root, after dist/LexoraAI.exe exists):
-    candle -arch x64 -dSourceDir=dist -dProductVersion=0.1.1.0 -out build-wix/ packaging/windows/Product.wxs
-    light -out LexoraAI-windows-amd64.msi build-wix/Product.wixobj
--->
+
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
   <Product
-      Id="*"
-      Name="Lexora AI"
-      Language="1033"
-      Version="$(var.ProductVersion)"
-      Manufacturer="Lexora Labs"
-      UpgradeCode="cf2de8a4-5c1a-4f8b-9d2e-1a2b3c4d5e6f">
-    <Package
-        InstallerVersion="200"
-        Compressed="yes"
-        InstallScope="perMachine"
-        Description="Lexora AI desktop application" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Lexora AI is already installed." />
+    Id="*"
+    Name="Lexora AI"
+    Manufacturer="Lexora Labs"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="cf2de8a4-5c1a-4f8b-9d2e-1a2b3c4d5e6f">
+
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    <Feature Id="MainApplication" Title="Lexora AI" Level="1">
-      <ComponentGroupRef Id="ProductComponents" />
+
+    <!-- Installer UI -->
+    <Property Id="WIXUI_INSTALLDIR" Value="APPFOLDER"/>
+    <UIRef Id="WixUI_Advanced"/>
+    <UIRef Id="WixUI_ErrorProgressText"/>
+
+    <!-- Shortcut options (checkbox-backed properties) -->
+    <Property Id="INSTALL_STARTMENU_SHORTCUT" Value="1"/>
+    <Property Id="INSTALL_DESKTOP_SHORTCUT" Value="0"/>
+
+    <Feature Id="MainFeature" Title="Lexora AI" Level="1">
+      <ComponentRef Id="MainExe"/>
+      <ComponentRef Id="StartMenuShortcut"/>
+      <ComponentRef Id="DesktopShortcut"/>
     </Feature>
+
+    <!-- Add icon to Apps & Features -->
+    <Property Id="ARPPRODUCTICON" Value="LexoraIcon"/>
+    <Icon Id="LexoraIcon" SourceFile="$(var.SourceDir)\LexoraAI.exe"/>
+
   </Product>
 
+  <!-- Directories -->
   <Fragment>
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLFOLDER" Name="LexoraLabs">
-          <Directory Id="AppFolder" Name="Lexora AI" />
+        <Directory Id="COMPANYFOLDER" Name="Lexora Labs">
+          <Directory Id="APPFOLDER" Name="Lexora AI"/>
         </Directory>
       </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="StartMenuDir" Name="Lexora AI"/>
+      </Directory>
+
+      <Directory Id="DesktopFolder"/>
     </Directory>
   </Fragment>
 
+  <!-- Components -->
   <Fragment>
-    <ComponentGroup Id="ProductComponents" Directory="AppFolder">
-      <Component Id="cmp_LexoraAIExe" Guid="*">
-        <File Id="fil_LexoraAIExe" Source="$(var.SourceDir)\LexoraAI.exe" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
+    <Component Id="MainExe" Directory="APPFOLDER" Guid="*">
+      <File Id="LexoraExe"
+            Source="$(var.SourceDir)\LexoraAI.exe"
+            KeyPath="yes"/>
+    </Component>
+
+    <!-- Start Menu Shortcut -->
+    <Component Id="StartMenuShortcut" Directory="StartMenuDir" Guid="*">
+      <Condition><![CDATA[INSTALL_STARTMENU_SHORTCUT = 1]]></Condition>
+
+      <Shortcut
+        Id="StartMenuShortcut"
+        Name="Lexora AI"
+        Target="[#LexoraExe]"
+        WorkingDirectory="APPFOLDER"
+        Icon="LexoraIcon"
+        Advertise="no"/>
+
+      <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall"/>
+      <RegistryValue Root="HKCU"
+                     Key="Software\LexoraLabs\LexoraAI"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes"/>
+    </Component>
+
+    <!-- Desktop Shortcut -->
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
+      <Condition><![CDATA[INSTALL_DESKTOP_SHORTCUT = 1]]></Condition>
+
+      <Shortcut
+        Id="DesktopShortcut"
+        Name="Lexora AI"
+        Target="[#LexoraExe]"
+        WorkingDirectory="APPFOLDER"
+        Icon="LexoraIcon"
+        Advertise="no"/>
+
+      <RegistryValue Root="HKCU"
+                     Key="Software\LexoraLabs\LexoraAI"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes"/>
+    </Component>
+
   </Fragment>
+
 </Wix>

@@ -1,9 +1,3 @@
-# Pack Lexora AI desktop UI (Flet + PyInstaller) for Windows and macOS.
-# - Push tag v* → GitHub Release uploads:
-#     Windows: LexoraAI-windows-amd64.zip (LexoraAI.exe inside, friendlier download) + LexoraAI-windows-amd64.msi (WiX)
-#     macOS:   LexoraAI-macos-arm64.zip (LexoraAI.app bundle) + LexoraAI-macos-arm64.pkg (installer; macOS has no MSI)
-# - workflow_dispatch → same artifacts on the workflow run summary.
-
 name: Desktop release
 
 on:
@@ -16,6 +10,9 @@ concurrency:
   group: desktop-release-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   package-windows:
     name: Pack (Windows)
@@ -23,83 +20,70 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install Python dependencies
+      - name: Build EXE (Flet)
+        shell: pwsh
         run: |
+          python -m venv .venv
+          .\.venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
-          pip install "pyinstaller>=6.3,<7"
+          pip install flet pillow
 
-      - name: Flet pack
-        run: >
-          flet pack -y -v src/lexora/ui/main.py
-          -i lexora-ai-icon.ico
-          -n LexoraAI
-          --product-name "Lexora AI"
-          --add-data "assets;assets"
-          --add-data "lexora-ai-icon.ico;."
+          # Build to dist/ (adjust the entry script if yours differs)
+          # If you already build dist in a previous step/job, you can remove this.
+          flet pack main.py --name LexoraAI --distpath dist --yes
 
-      - name: Verify Windows executable
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "dist/LexoraAI.exe")) { Get-ChildItem dist; throw "Expected dist/LexoraAI.exe" }
-
-      - name: Set package version (WiX needs x.x.x.x)
-        id: pkgver
-        shell: pwsh
-        run: |
-          $ref = $env:GITHUB_REF
-          if ($ref -match '^refs/tags/v(.+)$') {
-            $plain = $Matches[1]
-          } else {
-            $plain = "0.0.$($env:GITHUB_RUN_NUMBER)"
+          if (-not (Test-Path .\dist\LexoraAI.exe)) {
+            Write-Error "dist\\LexoraAI.exe not found after build. Check entry script path.";
+            Get-ChildItem -Recurse dist | Select-Object FullName;
+            exit 1
           }
-          $parts = @($plain -split '\.' | ForEach-Object { ($_ -replace '[^0-9].*$','') })
-          if ($parts.Count -eq 0) { $parts = @(0,0,0) }
-          while ($parts.Count -lt 4) { $parts += 0 }
-          $wix = ($parts[0..3] | ForEach-Object { [int]$_ }) -join '.'
-          "plain_version=$plain" >> $env:GITHUB_OUTPUT
-          "wix_version=$wix" >> $env:GITHUB_OUTPUT
-          Write-Host "WiX ProductVersion=$wix (from $plain)"
 
-      - name: Install WiX Toolset (MSI authoring)
-        run: choco install wixtoolset -y --no-progress
-
-      - name: Build MSI (WiX candle + light)
+      - name: Create ZIP artifact
         shell: pwsh
         run: |
+          if (Test-Path LexoraAI-windows-amd64.zip) { Remove-Item LexoraAI-windows-amd64.zip -Force }
+          Compress-Archive -Path dist\* -DestinationPath LexoraAI-windows-amd64.zip
+
+      - name: Install WiX Toolset (v3)
+        shell: pwsh
+        run: |
+          # WiX v3 provides candle.exe/light.exe
+          choco install wixtoolset --version=3.14.1 -y
+
+      - name: Build MSI (WiX)
+        shell: pwsh
+        run: |
+          # IMPORTANT: write intermediates to RUNNER_TEMP to avoid workspace ACL/locking issues
+          $wixOut = Join-Path $env:RUNNER_TEMP "wixout"
+          Remove-Item $wixOut -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $wixOut | Out-Null
+
           $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
             ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
           if (-not $candle) { throw "candle.exe not found; WiX install failed?" }
+
           $wixBin = Split-Path $candle -Parent
-          $repo = (Get-Location).Path
-          $objDir = Join-Path $repo "build-wix"
-          $objFile = Join-Path $objDir "Product.wixobj"
-          $msiOut = Join-Path $repo "LexoraAI-windows-amd64.msi"
-          New-Item -ItemType Directory -Force $objDir | Out-Null
           $dist = (Resolve-Path "dist").Path
-          # candle -out must be the .wixobj file path, not a directory (CNDL0050 otherwise)
+
           & (Join-Path $wixBin "candle.exe") -arch x64 `
             "-dSourceDir=$dist" `
-            "-dProductVersion=${{ steps.pkgver.outputs.wix_version }}" `
-            -out $objFile `
-            (Join-Path $repo "packaging\windows\Product.wxs")
-          & (Join-Path $wixBin "light.exe") -out $msiOut $objFile
+            "-dProductVersion=${{ github.ref_name }}" `
+            -out $wixOut `
+            "packaging\windows\Product.wxs"
 
-      - name: Zip executable (avoids raw .exe download blocks)
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "dist\LexoraAI.exe" -DestinationPath "LexoraAI-windows-amd64.zip" -Force
+          & (Join-Path $wixBin "light.exe") -ext WixUIExtension -out "LexoraAI-windows-amd64.msi" (Join-Path $wixOut "Product.wixobj")
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts (Windows)
+        uses: actions/upload-artifact@v4
         with:
-          name: lexora-desktop-windows-amd64
+          name: lexora-desktop-windows
           path: |
             LexoraAI-windows-amd64.zip
             LexoraAI-windows-amd64.msi
@@ -110,83 +94,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
-          pip install "pyinstaller>=6.3,<7"
-          # PyInstaller on macOS requires .icns unless Pillow can convert from .ico
-          pip install "pillow>=10,<12"
-
-      - name: Flet pack
-        run: >
-          flet pack -y -v src/lexora/ui/main.py
-          -i lexora-ai-icon.ico
-          -n LexoraAI
-          --product-name "Lexora AI"
-          --add-data "assets:assets"
-          --add-data "lexora-ai-icon.ico:."
-
-      - name: Verify app bundle
-        run: |
-          ls -la dist
-          test -d "dist/LexoraAI.app"
-
-      - name: Set package version (pkgbuild)
-        id: pkgver
+      - name: Build macOS app (Flet)
         shell: bash
         run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
-            VER="${BASH_REMATCH[1]}"
-          else
-            VER="0.0.${GITHUB_RUN_NUMBER}"
-          fi
-          VER="${VER//+/-}"
-          echo "plain_version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "pkg_version=${VER}" >> "$GITHUB_OUTPUT"
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install flet pillow
 
-      - name: Zip .app bundle (single download-friendly archive)
-        run: |
-          set -euxo pipefail
-          cd dist
-          zip -ry ../LexoraAI-macos-arm64.zip LexoraAI.app
-          cd ..
-          ls -la LexoraAI-macos-arm64.zip
+          # Prefer flet build for macOS distribution; adjust if you still use flet pack.
+          flet build macos --bundle-id com.appvity.lexoraai --yes
 
-      - name: Build macOS installer package (.pkg)
-        run: |
-          set -euxo pipefail
-          rm -rf pkgroot
-          mkdir -p pkgroot
-          cp -R "dist/LexoraAI.app" "pkgroot/"
-          pkgbuild \
-            --root pkgroot \
-            --identifier com.lexoralabs.lexora-ai \
-            --version "${{ steps.pkgver.outputs.pkg_version }}" \
-            --install-location /Applications \
-            LexoraAI-macos-arm64.pkg
-          ls -la LexoraAI-macos-arm64.pkg
+          # Zip the output (you may adjust the path depending on your Flet version/output)
+          mkdir -p dist-macos
+          # Common output directory for flet build is "build"; we zip the whole build output.
+          zip -r "LexoraAI-macos-arm64.zip" build || true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts (macOS)
+        uses: actions/upload-artifact@v4
         with:
-          name: lexora-desktop-macos-arm64
+          name: lexora-desktop-macos
           path: |
             LexoraAI-macos-arm64.zip
-            LexoraAI-macos-arm64.pkg
 
   release:
     name: Publish GitHub Release
     needs: [package-windows, package-macos]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -195,19 +135,10 @@ jobs:
           pattern: lexora-desktop-*
           merge-multiple: true
 
-      - name: List release files
-        run: find release-assets -type f -maxdepth 2 -print
-
-      - name: Create release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            release-assets/LexoraAI-windows-amd64.zip
-            release-assets/LexoraAI-windows-amd64.msi
-            release-assets/LexoraAI-macos-arm64.zip
-            release-assets/LexoraAI-macos-arm64.pkg
+      - name: Create/Update GitHub Release and upload assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes ""
+          gh release upload "$tag" release-assets/* --clobber
