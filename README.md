@@ -132,9 +132,9 @@ flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-n
   --add-data "assets:assets" --add-data "lexora-ai-icon.ico:."
 ```
 
-Artifacts land under `dist/` (for example `LexoraAI.exe` on Windows, `LexoraAI.app` on macOS).
+Artifacts land under `dist/` (for example `LexoraAI.exe` on Windows, `LexoraAI.app` on macOS). To ship macOS builds, wrap the `.app` in a **DMG** (for example `hdiutil create -volname "Lexora AI" -srcfolder dist/LexoraAI.app -ov -format UDZO LexoraAI.dmg`).
 
-**GitHub Actions:** pushing a version tag matching `v*` runs `.github/workflows/desktop-release.yml`, which builds on `windows-latest` and `macos-latest`, attaches both zip files to a GitHub Release, and uses the same `flet pack` options. Use **Actions → Desktop release → Run workflow** for a build-only run (download zips from the workflow summary).
+**GitHub Actions:** a tag `v*` runs `.github/workflows/desktop-release.yml`, which uploads **`LexoraAI.exe`** (Windows) and **`LexoraAI-macos-arm64.dmg`** (compressed disk image of the `.app`) to the GitHub Release—no extra zip layer. Workflow-only runs still expose those files as downloadable **artifacts** (GitHub may wrap downloads in a zip once; the asset inside is the `.exe` or `.dmg`). Use **Actions → Desktop release → Run workflow** for a build-only run.
 
 ### Command Line
 

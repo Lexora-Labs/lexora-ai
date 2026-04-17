@@ -1,6 +1,6 @@
 # Pack Lexora AI desktop UI (Flet + PyInstaller) for Windows and macOS.
-# - Push tag v* → upload zips to a GitHub Release (requires default GITHUB_TOKEN permissions).
-# - workflow_dispatch → build only; download artifacts from the run summary.
+# - Push tag v* → GitHub Release uploads LexoraAI.exe (Windows) and LexoraAI-macos-arm64.dmg (macOS).
+# - workflow_dispatch → build only; download those binaries from the workflow run artifacts.
 
 name: Desktop release
 
@@ -41,16 +41,15 @@ jobs:
           --add-data "assets;assets"
           --add-data "lexora-ai-icon.ico;."
 
-      - name: Zip executable
+      - name: Verify Windows executable
         shell: pwsh
         run: |
           if (-not (Test-Path "dist/LexoraAI.exe")) { Get-ChildItem dist; throw "Expected dist/LexoraAI.exe" }
-          Compress-Archive -Path "dist/LexoraAI.exe" -DestinationPath "dist/LexoraAI-windows-amd64.zip" -Force
 
       - uses: actions/upload-artifact@v4
         with:
           name: lexora-desktop-windows-amd64
-          path: dist/LexoraAI-windows-amd64.zip
+          path: dist/LexoraAI.exe
 
   package-macos:
     name: Pack (macOS)
@@ -80,16 +79,19 @@ jobs:
           --add-data "assets:assets"
           --add-data "lexora-ai-icon.ico:."
 
-      - name: Zip app bundle
+      - name: Create macOS disk image (.dmg)
         run: |
+          set -eux
           ls -la dist
           test -d "dist/LexoraAI.app"
-          cd dist && zip -ry ../LexoraAI-macos-arm64.zip LexoraAI.app && cd ..
+          # Single-file installer users expect on macOS (UDZO = compressed read-only DMG)
+          hdiutil create -volname "Lexora AI" -srcfolder "dist/LexoraAI.app" -ov -format UDZO "LexoraAI-macos-arm64.dmg"
+          ls -la LexoraAI-macos-arm64.dmg
 
       - uses: actions/upload-artifact@v4
         with:
           name: lexora-desktop-macos-arm64
-          path: LexoraAI-macos-arm64.zip
+          path: LexoraAI-macos-arm64.dmg
 
   release:
     name: Publish GitHub Release
@@ -115,6 +117,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: release-assets/*.zip
+          files: |
+            release-assets/LexoraAI.exe
+            release-assets/LexoraAI-macos-arm64.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
