@@ -31,11 +31,15 @@ jobs:
           python -m venv .venv
           .\.venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
-          pip install flet pillow
+          # Pin toolchain used by repository packaging flow
+          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
-          # Build to dist/ (adjust the entry script if yours differs)
-          # If you already build dist in a previous step/job, you can remove this.
-          flet pack main.py --name LexoraAI --distpath dist --yes
+          flet pack -y -v src/lexora/ui/main.py `
+            -i lexora-ai-icon.ico `
+            -n LexoraAI `
+            --product-name "Lexora AI" `
+            --add-data "assets;assets" `
+            --add-data "lexora-ai-icon.ico;."
 
           if (-not (Test-Path .\dist\LexoraAI.exe)) {
             Write-Error "dist\\LexoraAI.exe not found after build. Check entry script path.";
@@ -70,15 +74,27 @@ jobs:
           if (-not $candle) { throw "candle.exe not found; WiX install failed?" }
 
           $wixBin = Split-Path $candle -Parent
+          $repo = (Get-Location).Path
+          $objFile = Join-Path $wixOut "Product.wixobj"
+          if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
+            $plain = $Matches[1]
+          } else {
+            $plain = "0.0.$($env:GITHUB_RUN_NUMBER)"
+          }
+          $parts = @($plain -split '\.' | ForEach-Object { ($_ -replace '[^0-9].*$','') })
+          if ($parts.Count -eq 0) { $parts = @(0,0,0) }
+          while ($parts.Count -lt 4) { $parts += 0 }
+          $wixVersion = ($parts[0..3] | ForEach-Object { [int]$_ }) -join '.'
           $dist = (Resolve-Path "dist").Path
 
+          # candle -out must target Product.wixobj file path.
           & (Join-Path $wixBin "candle.exe") -arch x64 `
             "-dSourceDir=$dist" `
-            "-dProductVersion=${{ github.ref_name }}" `
-            -out $wixOut `
-            "packaging\windows\Product.wxs"
+            "-dProductVersion=$wixVersion" `
+            -out $objFile `
+            (Join-Path $repo "packaging\windows\Product.wxs")
 
-          & (Join-Path $wixBin "light.exe") -ext WixUIExtension -out "LexoraAI-windows-amd64.msi" (Join-Path $wixOut "Product.wixobj")
+          & (Join-Path $wixBin "light.exe") -ext WixUIExtension -out "LexoraAI-windows-amd64.msi" $objFile
 
       - name: Upload artifacts (Windows)
         uses: actions/upload-artifact@v4
@@ -105,15 +121,33 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
-          pip install flet pillow
+          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
-          # Prefer flet build for macOS distribution; adjust if you still use flet pack.
-          flet build macos --bundle-id com.appvity.lexoraai --yes
+          # Keep CI independent from Flutter SDK by using pack.
+          flet pack -y -v src/lexora/ui/main.py \
+            -i lexora-ai-icon.ico \
+            -n LexoraAI \
+            --product-name "Lexora AI" \
+            --add-data "assets:assets" \
+            --add-data "lexora-ai-icon.ico:."
 
-          # Zip the output (you may adjust the path depending on your Flet version/output)
-          mkdir -p dist-macos
-          # Common output directory for flet build is "build"; we zip the whole build output.
-          zip -r "LexoraAI-macos-arm64.zip" build || true
+          test -d "dist/LexoraAI.app"
+          zip -ry "LexoraAI-macos-arm64.zip" dist/LexoraAI.app
+
+          rm -rf pkgroot
+          mkdir -p pkgroot
+          cp -R "dist/LexoraAI.app" "pkgroot/"
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
+            VER="${BASH_REMATCH[1]}"
+          else
+            VER="0.0.${GITHUB_RUN_NUMBER}"
+          fi
+          pkgbuild \
+            --root pkgroot \
+            --identifier com.lexoralabs.lexora-ai \
+            --version "${VER}" \
+            --install-location /Applications \
+            LexoraAI-macos-arm64.pkg
 
       - name: Upload artifacts (macOS)
         uses: actions/upload-artifact@v4
@@ -121,6 +155,7 @@ jobs:
           name: lexora-desktop-macos
           path: |
             LexoraAI-macos-arm64.zip
+            LexoraAI-macos-arm64.pkg
 
   release:
     name: Publish GitHub Release
