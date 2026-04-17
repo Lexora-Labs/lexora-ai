@@ -100,6 +100,8 @@ From the UI:
 - Use **Jobs** to monitor queue/running/completed states, view run log, cancel active jobs, and re-run failed jobs.
 - Use **Settings** for cache behavior, provider guidance links, and app appearance/language preferences.
 
+Default translated files go under a **`library`** folder in the app’s current working directory, named `{original_stem}_{provider}_{target_lang}{same_extension}` (with ` (n)` before the extension if the name is already taken). You can override the path in **Translate** before each run.
+
 #### Recommended first run
 
 1. Configure one provider API key in **Settings** (or `.env`).
@@ -108,7 +110,7 @@ From the UI:
    - Provider: `OpenAI` (or any configured provider)
    - Target language: `vi`
 4. Start the translation and monitor progress in **Jobs**.
-5. When completed, use job actions (**...**) to open the translated output file/location.
+5. When completed, use job actions (**...**) to open the translated output file/location (by default under `library/` in the directory from which you started the UI).
 
 ### Command Line
 

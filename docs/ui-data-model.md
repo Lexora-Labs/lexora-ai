@@ -62,6 +62,16 @@ The job’s `parameters` dict is a snapshot of that return value (same keys). Ty
 
 **Note:** Cache scope/path and flags used at execution time are merged from Settings / client storage inside the worker; they are logged and passed to the translator but are not necessarily duplicated inside this dict unless the implementation is extended.
 
+### Default output path (Translate screen)
+
+Unless the operator edits the **Output file** field, the UI resolves the destination as follows:
+
+- **Folder:** `{cwd}/library` (the process working directory’s `library` subfolder; created if missing).
+- **Filename:** `{input_stem}_{provider_slug}_{target_lang}{input_suffix}` where `provider_slug` is the canonical provider id with hyphens replaced by underscores (for example `openai`, `azure_openai`, `azure_foundry`).
+- **Collisions:** if that path already exists on disk, the UI picks the first free name by appending ` (1)`, ` (2)`, … immediately before the extension (for example `book_openai_vi (1).epub`).
+
+Leaving **Output file** empty at run time falls back to the same rule. A non-empty `output_override` is still passed through; its parent directory is created when needed, and the same collision rule applies if that exact file path already exists.
+
 ---
 
 ## 3. Translate screen coordination (not a persisted model)

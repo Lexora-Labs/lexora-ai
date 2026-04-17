@@ -238,3 +238,6 @@ reports/
 # Local UI runtime state (do not commit user data)
 .lexora/*.sqlite3
 .lexora/*.key
+
+# Default UI translation output folder (working-directory relative)
+library/
