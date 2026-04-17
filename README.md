@@ -114,11 +114,12 @@ Default translated files go under a **`library`** folder in the app’s current 
 
 #### Desktop packaging (Windows / macOS)
 
-Local one-file build (requires [Flet](https://flet.dev/docs/cli/flet-pack) CLI from your `flet` install):
+Local one-file build (requires [Flet](https://flet.dev/docs/cli/flet-pack) CLI from your `flet` install and **PyInstaller**, which `flet pack` invokes):
 
 ```bash
 pip install -r requirements.txt
 pip install -e .
+pip install "pyinstaller>=6.3,<7"
 
 # Windows (PyInstaller ``;`` separator for --add-data)
 flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-name "Lexora AI" ^
