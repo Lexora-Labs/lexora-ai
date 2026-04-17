@@ -94,8 +94,11 @@ def main(page: ft.Page) -> None:
 
 
 if __name__ == "__main__":
+    # Desktop ``ft.AppView.FLET_APP`` spawns the native Flet view via asyncio subprocesses.
+    # ``WindowsSelectorEventLoopPolicy`` does not implement subprocess transport → NotImplementedError
+    # in frozen ``flet pack`` builds. Use the proactor loop (Python default on Windows 3.8+).
     if sys.platform.startswith("win"):
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     def _is_port_available(port: int) -> bool:
         try:
