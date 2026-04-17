@@ -125,7 +125,9 @@ pip install "pyinstaller>=6.3,<7"
 flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-name "Lexora AI" ^
   --add-data "assets;assets" --add-data "lexora-ai-icon.ico;."
 
-# macOS / Linux (``:`` separator)
+# macOS / Linux (``:`` separator). On macOS, install Pillow so ``flet pack`` can
+# convert ``lexora-ai-icon.ico`` to ``.icns`` for the app bundle.
+pip install "pillow>=10,<12"
 flet pack -y src/lexora/ui/main.py -i lexora-ai-icon.ico -n LexoraAI --product-name "Lexora AI" \
   --add-data "assets:assets" --add-data "lexora-ai-icon.ico:."
 ```

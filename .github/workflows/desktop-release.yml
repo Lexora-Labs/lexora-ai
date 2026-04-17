@@ -68,6 +68,8 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
           pip install "pyinstaller>=6.3,<7"
+          # PyInstaller on macOS requires .icns unless Pillow can convert from .ico
+          pip install "pillow>=10,<12"
 
       - name: Flet pack
         run: >
