@@ -16,7 +16,7 @@ permissions:
 env:
   PYTHON_VERSION: "3.12"
   APP_NAME: "LexoraAI"
-  APP_ENTRY: "main.py" # TODO: đổi thành đúng entry file của bạn, ví dụ: src/lexora_ai/main.py
+  APP_ENTRY: "src/lexora/ui/main.py"
 
 jobs:
   package-windows:
@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
 
           # flet pack relies on PyInstaller under the hood → must install pyinstaller
-          pip install flet pyinstaller pillow
+          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
           # Build single EXE into dist/
           if (Test-Path .\dist) { Remove-Item .\dist -Recurse -Force }
@@ -62,6 +62,7 @@ jobs:
       - name: Locate WiX Toolset (candle/light)
         shell: pwsh
         run: |
+          choco install wixtoolset --version=3.14.1 -y --no-progress
           $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
             ForEach-Object { Join-Path $_.FullName "bin\candle.exe" } |
             Where-Object { Test-Path $_ } |
@@ -91,16 +92,17 @@ jobs:
           if ($ver -match '^\d+\.\d+\.\d+$') { $ver = "$ver.0" }
           if ($ver -notmatch '^\d+\.\d+\.\d+\.\d+$') { $ver = "0.0.0.0" }
 
+          $objFile = Join-Path $wixOut "Product.wixobj"
           & (Join-Path $env:WIX_BIN "candle.exe") -arch x64 `
             "-dSourceDir=$sourceDir" `
             "-dProductVersion=$ver" `
-            -out $wixOut `
+            -out $objFile `
             "packaging\windows\Product.wxs"
 
           # If Product.wxs uses WixUI_* you must link WixUIExtension
           & (Join-Path $env:WIX_BIN "light.exe") -ext WixUIExtension `
             -out "${{ env.APP_NAME }}-windows-amd64.msi" `
-            (Join-Path $wixOut "Product.wixobj")
+            $objFile
 
       - name: Upload artifacts (Windows)
         uses: actions/upload-artifact@v4
@@ -122,25 +124,31 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build macOS app (flet build)
+      - name: Build macOS app (flet pack)
         shell: bash
         run: |
           python -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
-          pip install flet
+          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
-          flet build macos --bundle-id com.appvity.lexoraai --yes
+          flet pack -y -v "${APP_ENTRY}" \
+            -i lexora-ai-icon.ico \
+            -n "${APP_NAME}" \
+            --product-name "Lexora AI" \
+            --add-data "assets:assets" \
+            --add-data "lexora-ai-icon.ico:."
 
-          rm -f LexoraAI-macos.zip
-          zip -r LexoraAI-macos.zip build
+          test -d "dist/${APP_NAME}.app"
+          rm -f "${APP_NAME}-macos-arm64.zip"
+          zip -ry "${APP_NAME}-macos-arm64.zip" "dist/${APP_NAME}.app"
 
       - name: Upload artifacts (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: lexora-desktop-macos
           path: |
-            LexoraAI-macos.zip
+            ${{ env.APP_NAME }}-macos-arm64.zip
 
   release:
     name: Publish GitHub Release
