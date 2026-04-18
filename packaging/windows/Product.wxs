@@ -53,8 +53,8 @@
     </Feature>
 
     <!-- Add icon to Apps & Features -->
-    <Property Id="ARPPRODUCTICON" Value="lexora-ai-icon.ico"/>
-    <Icon Id="lexora-ai-icon.ico" SourceFile="lexora-ai-icon.ico"/>
+    <Property Id="ARPPRODUCTICON" Value="lexoraico"/>
+    <Icon Id="lexoraico" SourceFile="lexora-ai-icon.ico"/>
     <Icon Id="LexoraAI.exe" SourceFile="$(var.SourceDir)\LexoraAI.exe"/>
 
   </Product>
