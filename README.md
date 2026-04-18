@@ -84,7 +84,7 @@ Credentials and defaults can come from **two places** (both are supported):
 
 ### 1. `.env` file (CLI and UI)
 
-- Copy `**.env.example`** to `**.env**` in the working directory (next to the app when packaged, or repo root when developing).
+- Copy `**.env.example`** to `**.env`** in the working directory (next to the app when packaged, or repo root when developing).
 - Fill in keys for the providers you use. The CLI loads `.env` automatically; the UI also respects environment variables.
 
 See `**.env.example**` for every variable name (OpenAI, Azure OpenAI, Azure AI Foundry, Gemini, Anthropic, Qwen, optional UI port, etc.).
@@ -120,7 +120,7 @@ Use the expand control to show tuning options that mirror CLI-style flags:
 - **Structured EPUB batch** — when enabled, uses structured batching for EPUBs; **Structured max chars** caps payload size per batch (default `8000`).
 - **Report path (optional)** — if set, after the run finishes the app writes a JSON **run report** (command, languages, provider, paths, timing, token usage, and related metadata) to that path.
 
-For deeper behavior (document selection, structured batching, reports), see `**docs/translation-logic.md`** and `**lexora translate --help**`.
+For deeper behavior (document selection, structured batching, reports), see `**docs/translation-logic.md`** and `**lexora translate --help`**.
 
 ---
 
