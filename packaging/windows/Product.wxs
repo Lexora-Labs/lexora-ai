@@ -16,24 +16,46 @@
 
     <!-- Installer UI -->
     <!-- Required by WixUI_Advanced -->
-    <Property Id="ApplicationFolderName" Value="Lexora AI"/>
+    <Property Id="ALLUSERS" Value="1"/>
     <Property Id="WixAppFolder" Value="WixPerMachineFolder"/>
+    <Property Id="INSTALLLEVEL" Value="1"/>
+    <WixVariable Id="WixUISupportPerUser" Value="0"/>
     <UIRef Id="WixUI_Advanced"/>
     <UIRef Id="WixUI_ErrorProgressText"/>
 
-    <!-- Shortcut options (checkbox-backed properties) -->
-    <Property Id="INSTALL_STARTMENU_SHORTCUT" Value="1"/>
-    <Property Id="INSTALL_DESKTOP_SHORTCUT" Value="0"/>
-
-    <Feature Id="MainFeature" Title="Lexora AI" Level="1">
+    <Feature
+      Id="MainFeature"
+      Title="Lexora AI"
+      Description="Lexora AI desktop application."
+      Level="1"
+      Display="expand"
+      Absent="disallow"
+      ConfigurableDirectory="APPLICATIONFOLDER">
       <ComponentRef Id="MainExe"/>
-      <ComponentRef Id="StartMenuShortcut"/>
-      <ComponentRef Id="DesktopShortcut"/>
+      <Feature
+        Id="StartMenuShortcutFeature"
+        Title="Start menu shortcut"
+        Description="Create a Start menu shortcut for Lexora AI."
+        Level="1"
+        Absent="allow"
+        InstallDefault="local">
+        <ComponentRef Id="StartMenuShortcut"/>
+      </Feature>
+      <Feature
+        Id="DesktopShortcutFeature"
+        Title="Desktop shortcut"
+        Description="Create a desktop shortcut for Lexora AI."
+        Level="32767"
+        Absent="allow"
+        InstallDefault="local">
+        <ComponentRef Id="DesktopShortcut"/>
+      </Feature>
     </Feature>
 
     <!-- Add icon to Apps & Features -->
-    <Property Id="ARPPRODUCTICON" Value="LexoraIcon"/>
-    <Icon Id="LexoraIcon" SourceFile="$(var.SourceDir)\LexoraAI.exe"/>
+    <Property Id="ARPPRODUCTICON" Value="lexora-ai-icon.ico"/>
+    <Icon Id="lexora-ai-icon.ico" SourceFile="lexora-ai-icon.ico"/>
+    <Icon Id="LexoraAI.exe" SourceFile="$(var.SourceDir)\LexoraAI.exe"/>
 
   </Product>
 
@@ -42,7 +64,7 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="COMPANYFOLDER" Name="Lexora Labs">
-          <Directory Id="APPFOLDER" Name="Lexora AI"/>
+          <Directory Id="APPLICATIONFOLDER" Name="Lexora AI"/>
         </Directory>
       </Directory>
 
@@ -56,7 +78,7 @@
 
   <!-- Components -->
   <Fragment>
-    <Component Id="MainExe" Directory="APPFOLDER" Guid="*">
+    <Component Id="MainExe" Directory="APPLICATIONFOLDER" Guid="*">
       <File Id="LexoraExe"
             Source="$(var.SourceDir)\LexoraAI.exe"
             KeyPath="yes"/>
@@ -64,14 +86,12 @@
 
     <!-- Start Menu Shortcut -->
     <Component Id="StartMenuShortcut" Directory="StartMenuDir" Guid="*">
-      <Condition><![CDATA[INSTALL_STARTMENU_SHORTCUT = 1]]></Condition>
-
       <Shortcut
         Id="StartMenuShortcut"
         Name="Lexora AI"
         Target="[#LexoraExe]"
-        WorkingDirectory="APPFOLDER"
-        Icon="LexoraIcon"
+        WorkingDirectory="APPLICATIONFOLDER"
+        Icon="LexoraAI.exe"
         Advertise="no"/>
 
       <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall"/>
@@ -85,14 +105,12 @@
 
     <!-- Desktop Shortcut -->
     <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
-      <Condition><![CDATA[INSTALL_DESKTOP_SHORTCUT = 1]]></Condition>
-
       <Shortcut
         Id="DesktopShortcut"
         Name="Lexora AI"
         Target="[#LexoraExe]"
-        WorkingDirectory="APPFOLDER"
-        Icon="LexoraIcon"
+        WorkingDirectory="APPLICATIONFOLDER"
+        Icon="LexoraAI.exe"
         Advertise="no"/>
 
       <RegistryValue Root="HKCU"

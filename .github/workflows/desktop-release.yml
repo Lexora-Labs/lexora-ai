@@ -39,12 +39,22 @@ jobs:
 
           python -m pip install --upgrade pip
 
-          # flet pack relies on PyInstaller under the hood → must install pyinstaller
-          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
+          # Install app dependencies first so PyInstaller analyzes the same environment
+          # the desktop app actually needs at runtime.
+          pip install -r requirements.txt
+          pip install -e .
+          pip install "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
           # Build single EXE into dist/
           if (Test-Path .\dist) { Remove-Item .\dist -Recurse -Force }
-          flet pack "${{ env.APP_ENTRY }}" --name "${{ env.APP_NAME }}" --distpath dist --yes
+          flet pack "${{ env.APP_ENTRY }}" `
+            --name "${{ env.APP_NAME }}" `
+            --distpath dist `
+            -i lexora-ai-icon.ico `
+            --product-name "Lexora AI" `
+            --add-data "assets;assets" `
+            --add-data "lexora-ai-icon.ico;." `
+            --yes
 
           if (-not (Test-Path ".\dist\${{ env.APP_NAME }}.exe")) {
             Write-Error "dist\${{ env.APP_NAME }}.exe not found. Check APP_ENTRY path and flet pack output."
@@ -140,7 +150,9 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
-          pip install "flet==0.21.2" "pyinstaller>=6.3,<7" "pillow>=10,<12"
+          pip install -r requirements.txt
+          pip install -e .
+          pip install "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
           flet pack -y -v "${APP_ENTRY}" \
             -i lexora-ai-icon.ico \
