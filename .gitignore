@@ -231,6 +231,8 @@ book5.jsonl
 # Test/debug files
 test_auth.py
 docs/vibe-context.md
+# Session / agent NDJSON debug logs (never commit)
+debug-*.log
 
 # Local benchmark and analysis outputs
 reports/

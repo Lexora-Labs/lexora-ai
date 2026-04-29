@@ -11,6 +11,8 @@ from typing import Iterable, Optional
 from dotenv import load_dotenv
 from cryptography.fernet import Fernet
 
+from lexora.runtime_paths import lexora_data_file
+
 load_dotenv()
 
 
@@ -22,14 +24,14 @@ def _resolve_db_path() -> Path:
     configured = (os.getenv("LEXORA_UI_JOBS_DB") or "").strip()
     if configured:
         return Path(configured)
-    return Path(".lexora") / "jobs.sqlite3"
+    return lexora_data_file("jobs.sqlite3")
 
 
 def _resolve_key_path() -> Path:
     configured = (os.getenv("LEXORA_SECRETS_KEY_PATH") or "").strip()
     if configured:
         return Path(configured)
-    return Path(".lexora") / "secrets.key"
+    return lexora_data_file("secrets.key")
 
 
 def _ensure_fernet() -> Fernet:

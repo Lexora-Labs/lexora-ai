@@ -41,13 +41,14 @@ from lexora.ui.screens.jobs import JobsScreen
 from lexora.ui.screens.settings import SettingsScreen
 from lexora.ui.screens.about import AboutScreen
 from lexora.ui.job_store import JobStore
+from lexora.runtime_paths import lexora_data_file
 
 
 def _resolve_jobs_db_path() -> str:
     configured = (os.getenv("LEXORA_UI_JOBS_DB") or "").strip()
     if configured:
         return configured
-    return str(Path(".lexora") / "jobs.sqlite3")
+    return str(lexora_data_file("jobs.sqlite3"))
 
 
 def attach_lexora_shell(

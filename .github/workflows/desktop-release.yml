@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build EXE (flet pack -> dist\LexoraAI.exe)
+      - name: Build onedir app (pyinstaller spec -> dist\LexoraAI\LexoraAI.exe)
         shell: pwsh
         run: |
           python -m venv .venv
@@ -39,37 +39,44 @@ jobs:
 
           python -m pip install --upgrade pip
 
-          # Install app dependencies first so PyInstaller analyzes the same environment
-          # the desktop app actually needs at runtime.
+          # Install app dependencies so PyInstaller analyzes the same
+          # environment the desktop app actually needs at runtime.
+          # NOTE: install the package NON-editable. An editable install
+          # (``pip install -e .``) leaves the ``lexora`` package as a
+          # .pth-based namespace that PyInstaller can miss submodules from,
+          # which is a frequent cause of frozen apps silently failing to
+          # import our providers/translator modules.
           pip install -r requirements.txt
-          pip install -e .
+          pip install .
           pip install "pyinstaller>=6.3,<7" "pillow>=10,<12"
 
-          # Build single EXE into dist/
+          # Build onedir output under dist\LexoraAI\ using our explicit spec
+          # so Flet's native binaries and all lexora/provider data files are
+          # bundled. Onedir avoids the silent "missing DLL / side-by-side"
+          # failures that onefile produces on Windows end-user machines.
           if (Test-Path .\dist) { Remove-Item .\dist -Recurse -Force }
-          flet pack "${{ env.APP_ENTRY }}" `
-            --name "${{ env.APP_NAME }}" `
-            --distpath dist `
-            -i lexora-ai-icon.ico `
-            --product-name "Lexora AI" `
-            --add-data "assets;assets" `
-            --add-data "lexora-ai-icon.ico;." `
-            --yes
+          if (Test-Path .\build) { Remove-Item .\build -Recurse -Force }
+          pyinstaller --noconfirm --clean --distpath dist --workpath build `
+            packaging\windows\lexora_ai.spec
 
-          if (-not (Test-Path ".\dist\${{ env.APP_NAME }}.exe")) {
-            Write-Error "dist\${{ env.APP_NAME }}.exe not found. Check APP_ENTRY path and flet pack output."
-            Get-ChildItem -Recurse . | Select-Object FullName
+          $exePath = ".\dist\${{ env.APP_NAME }}\${{ env.APP_NAME }}.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "$exePath not found. Check the PyInstaller spec output."
+            Get-ChildItem -Recurse dist, build | Select-Object FullName
             exit 1
           }
+          Write-Host "Built: $exePath"
 
       - name: Create ZIP artifact (Windows)
         shell: pwsh
         run: |
           $zipName = "${{ env.APP_NAME }}-windows-amd64.zip"
           if (Test-Path $zipName) { Remove-Item $zipName -Force }
-          Compress-Archive -Path dist\* -DestinationPath $zipName
+          # Zip the whole onedir folder so users who don't want the MSI can
+          # just extract and run LexoraAI\LexoraAI.exe.
+          Compress-Archive -Path "dist\${{ env.APP_NAME }}" -DestinationPath $zipName
 
-      - name: Locate WiX Toolset (candle/light)
+      - name: Locate WiX Toolset (candle/light/heat)
         shell: pwsh
         run: |
           $candle = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
@@ -104,25 +111,66 @@ jobs:
           Remove-Item $wixOut -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $wixOut | Out-Null
 
-          $sourceDir = (Resolve-Path "dist").Path
+          # Path to the PyInstaller onedir output folder. Heat will harvest
+          # all files under this directory (LexoraAI.exe + _internal\*).
+          $harvestDir = (Resolve-Path "dist\${{ env.APP_NAME }}").Path
 
-          # MSI version must be numeric n.n.n.n — derive from tag vX.Y.Z
+          # MSI version must be numeric n.n.n.n - derive from tag vX.Y.Z.
+          # workflow_dispatch has no tag so fall back to 0.0.0.0 for manual runs.
           $tag = "${{ github.ref_name }}"
           $ver = $tag.TrimStart('v')
           if ($ver -match '^\d+\.\d+\.\d+$') { $ver = "$ver.0" }
           if ($ver -notmatch '^\d+\.\d+\.\d+\.\d+$') { $ver = "0.0.0.0" }
+          Write-Host "MSI ProductVersion: $ver"
 
-          $objFile = Join-Path $wixOut "Product.wixobj"
+          # --- 1) Harvest the onedir folder ---------------------------------
+          # -srd: suppress root dir (contents go directly into APPLICATIONFOLDER)
+          # -sreg: don't harvest registry (we author it ourselves)
+          # -scom: don't harvest COM registration
+          # -sfrag: single fragment
+          # -gg: auto-generate GUIDs
+          # -ke: keep empty directories
+          # -cg LexoraComponents: ComponentGroup id referenced by Product.wxs
+          # -dr APPLICATIONFOLDER: anchor at our APPLICATIONFOLDER directory
+          # -var var.HarvestSource: file SourceFile paths use $(var.HarvestSource)
+          $harvestedWxs = Join-Path $wixOut "LexoraComponents.wxs"
+          & (Join-Path $env:WIX_BIN "heat.exe") dir $harvestDir `
+            -cg LexoraComponents `
+            -dr APPLICATIONFOLDER `
+            -srd -sreg -scom -sfrag -gg -ke `
+            -var "var.HarvestSource" `
+            -out $harvestedWxs
+
+          if (-not (Test-Path $harvestedWxs)) {
+            Write-Error "heat.exe did not produce $harvestedWxs"
+            exit 1
+          }
+
+          # --- 2) Compile both WXS files ------------------------------------
+          $productObj    = Join-Path $wixOut "Product.wixobj"
+          $harvestedObj  = Join-Path $wixOut "LexoraComponents.wixobj"
+
           & (Join-Path $env:WIX_BIN "candle.exe") -arch x64 `
-            "-dSourceDir=$sourceDir" `
+            "-dHarvestSource=$harvestDir" `
+            "-dSourceDir=$harvestDir" `
             "-dProductVersion=$ver" `
-            -out $objFile `
+            -out "$productObj" `
             "packaging\windows\Product.wxs"
 
-          # If Product.wxs uses WixUI_* you must link WixUIExtension
+          & (Join-Path $env:WIX_BIN "candle.exe") -arch x64 `
+            "-dHarvestSource=$harvestDir" `
+            -out "$harvestedObj" `
+            "$harvestedWxs"
+
+          # --- 3) Link into MSI ---------------------------------------------
           & (Join-Path $env:WIX_BIN "light.exe") -ext WixUIExtension `
             -out "${{ env.APP_NAME }}-windows-amd64.msi" `
-            $objFile
+            "$productObj" "$harvestedObj"
+
+          if (-not (Test-Path "${{ env.APP_NAME }}-windows-amd64.msi")) {
+            Write-Error "MSI was not produced."
+            exit 1
+          }
 
       - name: Upload artifacts (Windows)
         uses: actions/upload-artifact@v4

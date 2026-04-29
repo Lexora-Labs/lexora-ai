@@ -17,6 +17,8 @@ from lexora.cli import DEFAULT_GLOBAL_CACHE_PATH
 from lexora.secrets import (
     delete_secret,
     delete_setting,
+    get_secret,
+    get_secret_first,
     get_setting,
     get_setting_first,
     has_secret,
@@ -373,29 +375,81 @@ class SettingsScreen(ft.Container):
         source = self._secret_source(secret_vars)
         is_configured = source is not None
 
+        # Load the actual stored key (from env or local encrypted store) so the
+        # "eye" reveal button shows the real value instead of "********".
+        stored_key = get_secret_first(secret_vars) if is_configured else ""
+
+        # API keys are long unbroken strings (50-100+ chars). With a fixed
+        # ``height=45`` Flet 0.21 clips both the masked-dots rendering and
+        # the revealed plaintext, so the field looks empty even when the
+        # value is loaded. We use the same fix as the endpoint fields:
+        #   - drop the forced height (let Flet pick the Material height),
+        #   - enable ``multiline`` with ``max_lines=1`` to route the field
+        #     through the scrollable multiline renderer (which handles long
+        #     content reliably) while still enforcing a single visual line,
+        #   - widen the field slightly so the masked dots fit better.
+        # ``password=True`` + ``can_reveal_password=True`` continue to work
+        # with this combination: the eye toggles between dots and the real
+        # value, both of which now render correctly.
         api_key_field = ft.TextField(
             label=f"{env_var}",
             hint_text="Enter API key...",
             password=True,
             can_reveal_password=True,
-            value="********" if is_configured else "",
-            width=280,
-            height=45,
+            value=stored_key or "",
+            tooltip=(f"{env_var}: value loaded from {source}" if is_configured else None),
+            width=320,
+            multiline=True,
+            min_lines=1,
+            max_lines=1,
             text_size=12,
+            text_align=ft.TextAlign.LEFT,
             bgcolor=Colors.BACKGROUND,
             border_radius=8,
         )
         extra_fields: Dict[str, ft.TextField] = {}
         for field_key, field_label in config.get("config_fields", []):
-            extra_fields[field_key] = ft.TextField(
-                label=f"{field_label} ({field_key})",
-                value=self._get_setting_with_aliases(field_key),
-                width=280,
-                height=45,
-                text_size=12,
-                bgcolor=Colors.BACKGROUND,
-                border_radius=8,
+            current_value = self._get_setting_with_aliases(field_key)
+            # Endpoint-style URLs can be long unbroken strings. In Flet 0.21
+            # a TextField with a small fixed `height` clips long text and it
+            # renders as empty. For these fields we:
+            #   - widen the field,
+            #   - drop the forced height so Flet uses its natural Material
+            #     height (~56) which scrolls long content correctly,
+            #   - enable multiline with max_lines=1 to use the scrollable
+            #     multiline renderer (which handles long URLs reliably)
+            #     while still enforcing a single visual line,
+            #   - attach a tooltip showing the full value on hover.
+            is_endpoint_like = any(
+                token in field_key.upper()
+                for token in ("ENDPOINT", "URL", "BASE_URL")
             )
+            if is_endpoint_like:
+                extra_fields[field_key] = ft.TextField(
+                    label=f"{field_label} ({field_key})",
+                    value=current_value,
+                    tooltip=current_value if current_value else None,
+                    width=420,
+                    multiline=True,
+                    min_lines=1,
+                    max_lines=1,
+                    text_size=12,
+                    text_align=ft.TextAlign.LEFT,
+                    bgcolor=Colors.BACKGROUND,
+                    border_radius=8,
+                )
+            else:
+                extra_fields[field_key] = ft.TextField(
+                    label=f"{field_label} ({field_key})",
+                    value=current_value,
+                    tooltip=current_value if current_value else None,
+                    width=280,
+                    height=45,
+                    text_size=12,
+                    text_align=ft.TextAlign.LEFT,
+                    bgcolor=Colors.BACKGROUND,
+                    border_radius=8,
+                )
 
         inputs_row = ft.Row(
             controls=[api_key_field] + list(extra_fields.values()),
@@ -439,7 +493,7 @@ class SettingsScreen(ft.Container):
                                 icon=ft.icons.DELETE_OUTLINE,
                                 icon_color=Colors.WARNING,
                                 tooltip="Delete Local Provider Config",
-                                on_click=lambda e, n=name, k=api_key_field, extras=extra_fields: self._delete_provider_config(
+                                on_click=lambda e, n=name, k=api_key_field, extras=extra_fields: self._confirm_delete_provider_config(
                                     n,
                                     k,
                                     extras,
@@ -512,6 +566,46 @@ class SettingsScreen(ft.Container):
     def _get_setting_with_aliases(self, key: str) -> str:
         aliases = [key] + SETTING_ALIASES.get(key, [])
         return get_setting_first(aliases, "") or ""
+
+    def _confirm_delete_provider_config(
+        self,
+        provider: str,
+        api_key_field: ft.TextField,
+        extra_fields: Dict[str, ft.TextField],
+    ) -> None:
+        """Show a confirmation dialog before deleting provider config."""
+        dialog = ft.AlertDialog(modal=True)
+
+        def close_dialog(_: Optional[ft.ControlEvent] = None) -> None:
+            dialog.open = False
+            self.page.update()
+
+        def confirm(_: ft.ControlEvent) -> None:
+            close_dialog()
+            self._delete_provider_config(provider, api_key_field, extra_fields)
+
+        dialog.title = ft.Text("Delete provider configuration?")
+        dialog.content = ft.Text(
+            f"This will remove the locally stored API key and related settings "
+            f"for '{provider}'. Environment variables (if any) are not affected.\n\n"
+            f"This action cannot be undone.",
+            size=13,
+        )
+        dialog.actions = [
+            ft.TextButton("Cancel", on_click=close_dialog),
+            ft.ElevatedButton(
+                "Delete",
+                icon=ft.icons.DELETE_OUTLINE,
+                bgcolor=Colors.WARNING,
+                color=Colors.TEXT_PRIMARY,
+                on_click=confirm,
+            ),
+        ]
+        dialog.actions_alignment = ft.MainAxisAlignment.END
+
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
     def _delete_provider_config(
         self,

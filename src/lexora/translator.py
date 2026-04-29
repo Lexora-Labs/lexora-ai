@@ -20,6 +20,7 @@ from .core import (
 )
 from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
+from .readers.epub_reader import restore_xhtml_heads_in_epub
 from .core.structured_batch import StructuredBatchItem, pack_items_by_char_budget
 
 
@@ -316,6 +317,55 @@ class Translator:
             "structured_fallback_batches": 0,
         }
 
+        # Snapshot the FULL original XHTML for every document item BEFORE
+        # we mutate ``set_content`` on it. We read straight from the source
+        # EPUB ZIP because ``ebooklib``'s ``EpubHtml.get_content()`` already
+        # returns a regenerated document with the ``<head>`` stripped down
+        # to the empty ``<head/>`` form (it removes ``<link
+        # rel="stylesheet">``, custom ``<meta>``, etc.). We need the
+        # untouched bytes from the ZIP so we can splice the real ``<head>``
+        # back in after ``epub.write_epub``.
+        original_xhtml_by_basename: Dict[str, str] = {}
+        if isinstance(reader, EpubReader):
+            try:
+                import zipfile
+
+                with zipfile.ZipFile(input_file, "r") as src_zip:
+                    zip_names = set(src_zip.namelist())
+                    for original_item in reader.iter_document_items(book):
+                        item_name = original_item.get_name()
+                        # ebooklib's ``item_name`` is relative to the OPF.
+                        # Different EPUB packagers use different OPF roots
+                        # (``OEBPS/``, ``EPUB/``, ``OPS/``, or none), so try
+                        # the bare name first then common prefixes.
+                        candidates = [
+                            item_name,
+                            f"OEBPS/{item_name}",
+                            f"EPUB/{item_name}",
+                            f"OPS/{item_name}",
+                        ]
+                        chosen = next((c for c in candidates if c in zip_names), None)
+                        if chosen is None:
+                            # Last-ditch substring match for unusual layouts.
+                            chosen = next(
+                                (n for n in zip_names if n.endswith("/" + item_name)),
+                                None,
+                            )
+                        if chosen is None:
+                            continue
+                        try:
+                            original_html = src_zip.read(chosen).decode(
+                                "utf-8", errors="ignore"
+                            )
+                        except Exception:
+                            continue
+                        base = item_name.rsplit("/", 1)[-1]
+                        original_xhtml_by_basename[base] = original_html
+            except Exception:
+                # If the input is not a real ZIP (corrupt or test stub) skip
+                # the head-restore feature rather than failing translation.
+                original_xhtml_by_basename = {}
+
         self._log_event(
             logging.INFO,
             "translation.epub.started",
@@ -486,6 +536,29 @@ class Translator:
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         epub.write_epub(output_file, book)
+
+        # ebooklib.write_epub strips custom ``<head>`` content (notably
+        # ``<link rel="stylesheet">``) from chapter XHTML. Restore each
+        # chapter's original head while keeping the translated body.
+        if original_xhtml_by_basename:
+            try:
+                restore_xhtml_heads_in_epub(
+                    str(output_path),
+                    original_xhtml_by_basename,
+                )
+                self._log_event(
+                    logging.INFO,
+                    "translation.epub.head_restored",
+                    output_file=output_file,
+                    docs_restored=len(original_xhtml_by_basename),
+                )
+            except Exception as exc:
+                self._log_event(
+                    logging.WARNING,
+                    "translation.epub.head_restore_failed",
+                    output_file=output_file,
+                    error=str(exc),
+                )
 
         total_elapsed = time.perf_counter() - started_at
         cache_rate = (total_cache_hits / total_chunks * 100.0) if total_chunks else 0.0
