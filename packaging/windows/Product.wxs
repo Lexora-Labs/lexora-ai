@@ -87,10 +87,9 @@
       </Directory>
 
       <!--
-        Per-machine Start Menu folder (resolves to All Users start menu
-        because ALLUSERS=1 / InstallScope=perMachine).
+        All-users Start Menu folder (perMachine install).
       -->
-      <Directory Id="ProgramMenuFolder">
+      <Directory Id="CommonStartMenuFolder">
         <Directory Id="StartMenuDir" Name="Lexora AI"/>
       </Directory>
 
@@ -122,7 +121,7 @@
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraAI.exe"
-        Advertise="no"/>
+        Advertise="yes"/>
 
       <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall"/>
       <RegistryValue Root="HKLM"
@@ -142,7 +141,7 @@
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraAI.exe"
-        Advertise="no"/>
+        Advertise="yes"/>
 
       <RegistryValue Root="HKLM"
                      Key="Software\LexoraLabs\LexoraAI\Shortcuts"
