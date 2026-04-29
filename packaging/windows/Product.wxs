@@ -121,7 +121,7 @@
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraAI.exe"
-        Advertise="yes"/>
+        Advertise="no"/>
 
       <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall"/>
       <RegistryValue Root="HKLM"
@@ -141,7 +141,7 @@
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraAI.exe"
-        Advertise="yes"/>
+        Advertise="no"/>
 
       <RegistryValue Root="HKLM"
                      Key="Software\LexoraLabs\LexoraAI\Shortcuts"
