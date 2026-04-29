@@ -33,6 +33,9 @@ MANIFEST
 *.manifest
 *.spec
 
+# Keep our PyInstaller spec committed (used by CI for Windows packaging).
+!packaging/windows/lexora_ai.spec
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
