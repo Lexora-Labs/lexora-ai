@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from .logging_framework import build_logging_config, configure_logging
+from .runtime_paths import user_data_dir
 from .translator import Translator
 from .providers import (
     canonical_provider_name,
@@ -18,8 +19,17 @@ from .providers import (
 )
 
 
-DEFAULT_GLOBAL_CACHE_PATH = ".lexora/cache/global_translation_cache.jsonl"
-DEFAULT_PER_EBOOK_CACHE_DIR = ".lexora/cache/per-ebook"
+# Default cache locations.
+#
+# These resolve through ``user_data_dir()`` so the desktop app (installed in
+# read-only ``C:\\Program Files\\...``) can still write its cache. Developers
+# and existing CLI users with a populated ``./.lexora/`` keep their behaviour
+# because :func:`user_data_dir` prefers a pre-existing legacy folder before
+# falling back to the per-user data directory.
+DEFAULT_GLOBAL_CACHE_PATH = str(
+    user_data_dir() / "cache" / "global_translation_cache.jsonl"
+)
+DEFAULT_PER_EBOOK_CACHE_DIR = str(user_data_dir() / "cache" / "per-ebook")
 
 
 def _load_glossary(glossary_path: str):
