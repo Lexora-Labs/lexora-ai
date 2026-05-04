@@ -24,6 +24,7 @@ from lexora.cli import (
 from lexora.providers import canonical_provider_name, create_provider
 from lexora.translator import TranslationCancelled, Translator
 from lexora.logging_framework import build_logging_config, configure_logging, get_ui_log_events
+from lexora.runtime_paths import user_data_dir
 from lexora.secrets import get_setting
 from lexora.ui.i18n import translate
 from lexora.ui.job_store import JobStore
@@ -63,8 +64,10 @@ load_dotenv()
 
 
 def default_ui_library_dir() -> Path:
-    """Directory for UI default translation outputs (under the process working directory)."""
-    return (Path.cwd() / "library").resolve()
+    """Directory for UI default translation outputs in writable app data storage."""
+    library_dir = user_data_dir() / "library"
+    library_dir.mkdir(parents=True, exist_ok=True)
+    return library_dir.resolve()
 
 
 def provider_slug_for_output_filename(provider_label: str) -> str:
@@ -95,6 +98,48 @@ def build_ui_default_output_file_path(input_file: str, target_lang: str, provide
     out_dir = default_ui_library_dir()
     base = out_dir / f"{source.stem}_{provider_slug_for_output_filename(provider_label)}_{target_lang}{source.suffix}"
     return resolve_unique_output_path(base)
+
+
+def _normalize_ui_cache_path(raw_path: str) -> str:
+    """Return a safe cache path for desktop UI runs.
+
+    Older UI settings may persist a relative legacy value like ``.lexora/...``.
+    In MSI installs the working directory is under ``Program Files`` (read-only),
+    so relative cache paths fail with WinError 5. For UI runs we coerce
+    non-absolute cache paths back to the writable default cache location.
+    """
+    value = (raw_path or "").strip()
+    if not value:
+        return DEFAULT_GLOBAL_CACHE_PATH
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        return DEFAULT_GLOBAL_CACHE_PATH
+    return str(candidate)
+
+
+def _ensure_output_parent_writable(path: Path) -> Path:
+    """Ensure output parent exists, fallback to user library when unwritable."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        fallback = resolve_unique_output_path(default_ui_library_dir() / path.name)
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _resolve_output_path_with_fallback(*, override: str, default_path: Path) -> Path:
+    """Resolve UI output path safely for desktop installs.
+
+    Relative overrides are resolved under the writable default library folder
+    (not process CWD), and any unwritable parent falls back to that folder.
+    """
+    if (override or "").strip():
+        candidate = Path(override.strip()).expanduser()
+        if not candidate.is_absolute():
+            candidate = default_ui_library_dir() / candidate
+        return _ensure_output_parent_writable(resolve_unique_output_path(candidate))
+    return _ensure_output_parent_writable(resolve_unique_output_path(default_path))
 
 
 
@@ -332,7 +377,7 @@ class TranslateScreen(ft.Container):
         self.end_doc_field = ft.TextField(label="End doc", value="", width=110, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
         self.chunk_size_field = ft.TextField(label="Chunk size", value="1200", width=120, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
         self.chunk_context_field = ft.TextField(label="Context window", value="0", width=130, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
-        self.structured_batch_switch = ft.Switch(value=False)
+        self.structured_batch_switch = ft.Switch(value=True)
         self.structured_max_chars_field = ft.TextField(label="Structured max chars", value="8000", width=160, height=CONTROL_HEIGHT, text_size=CONTROL_TEXT_SIZE)
         self.report_path_field = ft.TextField(
             label="Report path (optional)",
@@ -615,13 +660,14 @@ class TranslateScreen(ft.Container):
             if scope_stored in ("global", "per-ebook", "disabled"):
                 cache_scope = str(scope_stored)
             if isinstance(path_stored, str) and path_stored.strip():
-                cache_path = path_stored.strip()
+                cache_path = _normalize_ui_cache_path(path_stored)
             if isinstance(no_cache_stored, bool):
                 no_cache = no_cache_stored
             if isinstance(clear_cache_stored, bool):
                 clear_cache = clear_cache_stored
         except Exception:
             pass
+        cache_path = _normalize_ui_cache_path(str(cache_path))
         return {
             "cache_scope": cache_scope,
             "cache_path": cache_path,
@@ -871,13 +917,12 @@ class TranslateScreen(ft.Container):
         *,
         provider_label: str = "OpenAI",
     ) -> str:
-        if override.strip():
-            output_path = Path(override.strip()).expanduser()
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            return str(resolve_unique_output_path(output_path))
         default_path = Path(self._build_default_output_path(input_file, target_lang, provider_label))
-        default_path.parent.mkdir(parents=True, exist_ok=True)
-        return str(resolve_unique_output_path(default_path))
+        output_path = _resolve_output_path_with_fallback(
+            override=override,
+            default_path=default_path,
+        )
+        return str(output_path)
 
     def _run_translation(self, store_job_id: str, request: Dict[str, Any]) -> None:
         self._job_store.mark_run_started(store_job_id)

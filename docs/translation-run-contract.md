@@ -22,7 +22,7 @@ Top-level fields:
 - `mode`
 - `cache_scope`
 - `dry_run`
-- `structured_epub_batch` (boolean)
+- `structured_epub_batch` (boolean; CLI default true for EPUB unless `--no-structured-epub-batch`)
 - `structured_epub_batch_max_chars` (integer)
 - `provider` (canonical name)
 - `glossary_terms`

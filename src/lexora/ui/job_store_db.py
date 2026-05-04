@@ -17,7 +17,9 @@ class JobStoreDB:
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path))
+        # Busy timeout avoids indefinite hangs when a second app instance briefly
+        # holds the DB (e.g. user relaunches before the first process exits).
+        conn = sqlite3.connect(str(self._db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         return conn
 

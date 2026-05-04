@@ -50,7 +50,7 @@ Running `build-local.ps1` produces three artifacts in the repo root:
 | --- | --- | --- |
 | `dist\LexoraAI\LexoraAI.exe` | Portable onedir EXE | Fastest smoke test. No install needed. |
 | `LexoraAI-windows-amd64.zip` | Portable archive | What end users download from GitHub Releases as the "portable" option. |
-| `LexoraAI-windows-amd64.msi` | Installer | What end users download and install. Offers Start Menu / Desktop shortcut options. |
+| `LexoraAI-windows-amd64.msi` | Installer | What end users download and install. Always adds a Start Menu shortcut; Custom Setup toggles the optional desktop shortcut. |
 
 ### Why onedir (folder) instead of onefile?
 
@@ -156,10 +156,10 @@ msiexec /i LexoraAI-windows-amd64.msi /l*v install.log
 
 On the **"Custom Setup"** page, expand **Lexora AI** — you should see:
 
-- **Start menu shortcut** — "Will be installed on local hard drive" (checked by default)
 - **Desktop shortcut** — "Will be installed on local hard drive" (checked by default)
 
-Leave both checked and complete the install.
+Start Menu shortcut is installed by default as part of the main app feature.
+Complete install with desktop shortcut as desired.
 
 Verify afterwards:
 

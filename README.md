@@ -172,7 +172,9 @@ Common patterns:
 
 ```bash
 lexora translate book.epub out.epub --target vi --service openai
-lexora translate book.epub out.epub --target vi --service gemini --structured-epub-batch --limit-docs 1
+lexora translate book.epub out.epub --target vi --service gemini --limit-docs 1
+# Structured EPUB JSON batches are on by default; to disable:
+lexora translate book.epub out.epub --target vi --service openai --no-structured-epub-batch
 ```
 
 For structured EPUB batching, cache scopes, and document ranges, see `**docs/translation-logic.md**` and `**lexora translate --help**`.

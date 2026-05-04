@@ -110,7 +110,7 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
-        structured_epub_batch: bool = False,
+        structured_epub_batch: bool = True,
         structured_epub_batch_max_chars: int = 8000,
         on_document_progress: Optional[Callable[[int, int], None]] = None,
         cancel_requested: Optional[Callable[[], bool]] = None,
@@ -131,7 +131,8 @@ class Translator:
             end_doc: Optional 1-based end index (inclusive) of EPUB document selection
             chunk_size: Max chars for sentence-aware chunking (EPUB path)
             chunk_context_window: Number of neighbor chunks on each side for context
-            structured_epub_batch: Use JSON multi-item batches for uncached EPUB chunks (GPT providers)
+            structured_epub_batch: Use JSON multi-item batches for uncached EPUB chunks when the
+                provider supports it (default True; ineffective for unsupported providers)
             structured_epub_batch_max_chars: Approx max source chars per structured batch (EPUB path)
             on_document_progress: Optional ``(docs_completed, docs_total)`` callback after each EPUB
                 document is processed (including skipped spine items), or ``(1, 1)`` when a non-EPUB
@@ -244,7 +245,7 @@ class Translator:
         end_doc: Optional[int] = None,
         chunk_size: int = 1200,
         chunk_context_window: int = 0,
-        structured_epub_batch: bool = False,
+        structured_epub_batch: bool = True,
         structured_epub_batch_max_chars: int = 8000,
         on_document_progress: Optional[Callable[[int, int], None]] = None,
         cancel_requested: Optional[Callable[[], bool]] = None,

@@ -81,8 +81,8 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
         pass
 
 
-def main(page: ft.Page) -> None:
-    attach_lexora_shell(page, set_app_icon=_set_app_icon)
+async def main(page: ft.Page) -> None:
+    await attach_lexora_shell(page, set_app_icon=_set_app_icon)
 
 
 if __name__ == "__main__":

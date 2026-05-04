@@ -83,7 +83,7 @@ Exit criteria: `test_basic.py` green; plan checklist updated to match shipped te
 
 ## 5. Acceptance checklist
 
-- [x] Structured mode off by default; legacy path unchanged (`structured_epub_batch` default false; CLI `store_true`).
+- [x] Structured mode on by default for EPUB (`structured_epub_batch` default true in UI, CLI, and `Translator.translate_file`; CLI `--no-structured-epub-batch` opts out).
 - [x] OpenAI + Azure AI Foundry implement `translate_structured_batch` (live calls verified by operators; CI uses fake provider smoke).
 - [x] Invalid model output: provider repair attempt + translator split / per-item `translate_batch` fallback; non-retryable errors do not amplify splits.
 - [x] Cache keys: `epub-structured-json-v1` vs `epub-node-v1` pipeline + chunking fingerprint separation in `translation_cache.py`.

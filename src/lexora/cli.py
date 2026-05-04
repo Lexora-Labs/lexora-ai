@@ -117,6 +117,9 @@ Examples:
     # Translate EPUB in bilingual mode with glossary
     lexora translate input.epub output.epub --target vi --mode bilingual --glossary glossary.json
 
+    # EPUB: neighbor chunk context (disables structured JSON batching, which is on by default)
+    lexora translate input.epub output.epub --target vi --chunk-context-window 1 --no-structured-epub-batch
+
 Supported file formats:
   - EPUB (.epub)
   - MOBI (.mobi)
@@ -250,14 +253,26 @@ Supported AI providers:
         default=0,
         help='Neighbor chunk window size for context-aware translation (default: 0)',
     )
-    translate_parser.add_argument(
+    _structured_epub_batch = translate_parser.add_mutually_exclusive_group()
+    _structured_epub_batch.add_argument(
         '--structured-epub-batch',
+        dest='structured_epub_batch',
         action='store_true',
         help=(
             'EPUB only: pack uncached chunks into JSON multi-item provider requests '
-            '(supported: openai, azure-foundry, gemini)'
+            '(supported: openai, azure-foundry, gemini). On by default; use '
+            '--no-structured-epub-batch to disable.'
         ),
     )
+    _structured_epub_batch.add_argument(
+        '--no-structured-epub-batch',
+        dest='structured_epub_batch',
+        action='store_false',
+        help=(
+            'EPUB only: disable JSON multi-item structured batches (use standard per-chunk batching).'
+        ),
+    )
+    translate_parser.set_defaults(structured_epub_batch=True)
     translate_parser.add_argument(
         '--structured-epub-batch-max-chars',
         type=int,
@@ -338,7 +353,9 @@ Supported AI providers:
                 raise ValueError("--chunk-context-window must be >= 0")
             if args.structured_epub_batch and args.chunk_context_window > 0:
                 raise ValueError(
-                    "Cannot use --structured-epub-batch together with --chunk-context-window > 0"
+                    "Structured EPUB batch (on by default) cannot be used with "
+                    "--chunk-context-window > 0; pass --no-structured-epub-batch or set "
+                    "--chunk-context-window 0"
                 )
             if args.structured_epub_batch_max_chars < 2000:
                 raise ValueError("--structured-epub-batch-max-chars must be >= 2000")
