@@ -2,7 +2,7 @@
 
 All notable changes to Lexora AI are documented here.
 
-## [v0.2.2] - 2026-05-05
+## [v0.2.2] - 2026-05-04
 
 ### Bug Fixes
 
