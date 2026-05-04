@@ -58,7 +58,7 @@ The job’s `parameters` dict is a snapshot of that return value (same keys). Ty
 - `mode`, `glossary_path`, `output_override`, `report_path`
 - `limit_docs`, `start_doc`, `end_doc`
 - `chunk_size`, `chunk_context_window`
-- `structured_epub_batch`, `structured_epub_batch_max_chars`
+- `structured_epub_batch`, `structured_epub_batch_max_chars` (the Translate screen defaults `structured_epub_batch` to true)
 
 **Note:** Cache scope/path and flags used at execution time are merged from Settings / client storage inside the worker; they are logged and passed to the translator but are not necessarily duplicated inside this dict unless the implementation is extended.
 

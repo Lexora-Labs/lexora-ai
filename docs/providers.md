@@ -136,7 +136,7 @@ provider = GeminiProvider(
 )
 ```
 
-**EPUB structured JSON batches:** `GeminiProvider.supports_structured_batch()` is true. With `--structured-epub-batch`, the same multi-item JSON contract as OpenAI/Azure is used (`response_mime_type=application/json` plus a response schema in the Google Gen AI SDK).
+**EPUB structured JSON batches:** `GeminiProvider.supports_structured_batch()` is true. Structured batching is the default for EPUB in CLI/UI; the same multi-item JSON contract as OpenAI/Azure is used (`response_mime_type=application/json` plus a response schema in the Google Gen AI SDK).
 
 **Install SDK:**
 ```bash

@@ -72,7 +72,7 @@ def _set_app_icon(page: ft.Page, theme_mode: ft.ThemeMode) -> None:
         pass
 
 
-def main(page: ft.Page) -> None:
+async def main(page: ft.Page) -> None:
     page.title = "Lexora AI"
     _set_app_icon(page, ft.ThemeMode.SYSTEM)
     page.update()
@@ -90,7 +90,7 @@ def main(page: ft.Page) -> None:
         setattr(page_any, "window_min_height", 600)
     page.padding = 0
 
-    attach_lexora_shell(page, set_app_icon=_set_app_icon)
+    await attach_lexora_shell(page, set_app_icon=_set_app_icon)
 
 
 if __name__ == "__main__":

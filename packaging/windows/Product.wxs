@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product
@@ -14,20 +13,12 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <!--
-      Installer UI
-
-      WixUI_FeatureTree exposes the "Custom Setup" feature-selection dialog
-      so users can opt in/out of the Start Menu and Desktop shortcuts.
-
-      Note: do NOT set <Property Id="ALLUSERS" .../> here. The
-      InstallScope="perMachine" attribute on <Package> already injects
-      ALLUSERS=1 and an explicit declaration produces WiX LGHT0091
-      "Duplicate symbol 'Property:ALLUSERS'".
-    -->
-    <Property Id="INSTALLLEVEL" Value="1"/>
-    <UIRef Id="WixUI_FeatureTree"/>
-    <UIRef Id="WixUI_ErrorProgressText"/>
+    <!-- UI -->
+    <Property Id="INSTALLLEVEL" Value="1" />
+    <!-- IMPORTANT: bind WiX UI "InstallDir" to your folder -->
+    <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
+    <UIRef Id="WixUI_FeatureTree" />
+    <UIRef Id="WixUI_ErrorProgressText" />
 
     <Feature
       Id="MainFeature"
@@ -37,22 +28,11 @@
       Display="expand"
       Absent="disallow"
       ConfigurableDirectory="APPLICATIONFOLDER">
-      <!--
-        LexoraComponents is generated at build time by heat.exe from the
-        onedir PyInstaller output (dist\LexoraAI\). It includes
-        LexoraAI.exe plus every file under _internal\.
-      -->
-      <ComponentGroupRef Id="LexoraComponents"/>
 
-      <Feature
-        Id="StartMenuShortcutFeature"
-        Title="Start menu shortcut"
-        Description="Create a Start menu shortcut for Lexora AI."
-        Level="1"
-        Absent="allow"
-        InstallDefault="local">
-        <ComponentRef Id="StartMenuShortcut"/>
-      </Feature>
+      <ComponentGroupRef Id="LexoraComponents" />
+
+      <!-- Always install Start Menu entry -->
+      <ComponentRef Id="StartMenuShortcut" />
 
       <Feature
         Id="DesktopShortcutFeature"
@@ -61,19 +41,14 @@
         Level="1"
         Absent="allow"
         InstallDefault="local">
-        <ComponentRef Id="DesktopShortcut"/>
+        <ComponentRef Id="DesktopShortcut" />
       </Feature>
+
     </Feature>
 
-    <!-- Add icon to Apps & Features -->
-    <Property Id="ARPPRODUCTICON" Value="lexoraico"/>
-    <Icon Id="lexoraico" SourceFile="lexora-ai-icon.ico"/>
-    <!--
-      Icon used by the shortcuts themselves. SourceDir is passed to candle
-      as -dSourceDir=dist\LexoraAI so this resolves to the main EXE inside
-      the onedir output.
-    -->
-    <Icon Id="LexoraAI.exe" SourceFile="$(var.SourceDir)\LexoraAI.exe"/>
+    <!-- Icons -->
+    <Icon Id="LexoraIcon" SourceFile="lexora-ai-icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="LexoraIcon" />
 
   </Product>
 
@@ -82,75 +57,63 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="COMPANYFOLDER" Name="Lexora Labs">
-          <Directory Id="APPLICATIONFOLDER" Name="Lexora AI"/>
+          <Directory Id="APPLICATIONFOLDER" Name="Lexora AI" />
         </Directory>
       </Directory>
 
-      <!--
-        All-users Start Menu folder (perMachine install).
-      -->
-      <Directory Id="CommonStartMenuFolder">
-        <Directory Id="StartMenuDir" Name="Lexora AI"/>
+      <!-- Start Menu -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="StartMenuDir" Name="Lexora AI" />
       </Directory>
 
-      <!--
-        CommonDesktopFolder = all-users desktop (per-machine install).
-        DesktopFolder is per-user and does NOT receive shortcuts reliably
-        when the installer runs elevated.
-      -->
-      <Directory Id="CommonDesktopFolder"/>
+      <!-- All-users desktop -->
+      <Directory Id="DesktopFolder" />
     </Directory>
   </Fragment>
 
   <!-- Shortcut components -->
   <Fragment>
-    <!--
-      Start Menu shortcut.
-
-      KeyPath MUST be in HKLM (not HKCU) because this is a perMachine
-      install. Using HKCU as KeyPath caused the previous installer to skip
-      creating shortcuts even when the user selected them in the feature
-      tree: Windows Installer treats per-user KeyPaths as "not applicable"
-      during an elevated install and drops the component.
-    -->
     <Component Id="StartMenuShortcut" Directory="StartMenuDir" Guid="*">
+      <CreateFolder />
+
       <Shortcut
         Id="StartMenuShortcut"
         Name="Lexora AI"
         Description="Launch Lexora AI"
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
-        Icon="LexoraAI.exe"
-        Advertise="no"/>
+        Icon="LexoraIcon"
+        Advertise="no" />
 
-      <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall"/>
-      <RegistryValue Root="HKLM"
-                     Key="Software\LexoraLabs\LexoraAI\Shortcuts"
-                     Name="StartMenu"
-                     Type="integer"
-                     Value="1"
-                     KeyPath="yes"/>
+      <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall" />
+
+      <RegistryValue
+        Root="HKLM"
+        Key="Software\LexoraLabs\LexoraAI\Shortcuts"
+        Name="StartMenu"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
     </Component>
 
-    <!-- Desktop shortcut (all users). -->
-    <Component Id="DesktopShortcut" Directory="CommonDesktopFolder" Guid="*">
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
       <Shortcut
         Id="DesktopShortcut"
         Name="Lexora AI"
         Description="Launch Lexora AI"
         Target="[APPLICATIONFOLDER]LexoraAI.exe"
         WorkingDirectory="APPLICATIONFOLDER"
-        Icon="LexoraAI.exe"
-        Advertise="no"/>
+        Icon="LexoraIcon"
+        Advertise="no" />
 
-      <RegistryValue Root="HKLM"
-                     Key="Software\LexoraLabs\LexoraAI\Shortcuts"
-                     Name="Desktop"
-                     Type="integer"
-                     Value="1"
-                     KeyPath="yes"/>
+      <RegistryValue
+        Root="HKLM"
+        Key="Software\LexoraLabs\LexoraAI\Shortcuts"
+        Name="Desktop"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
     </Component>
-
   </Fragment>
 
 </Wix>

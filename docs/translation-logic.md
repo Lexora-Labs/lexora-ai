@@ -29,7 +29,7 @@ This document describes the current canonical translation logic in `lexora-ai`.
 4. Apply sentence-aware safe chunking for long node text.
 5. Translate **uncached** chunks:
   - **Default:** `provider.translate_batch(...)` per chunk (or batched lists as implemented by the provider).
-  - **Optional (`--structured-epub-batch`):** pack multiple chunks into one JSON request/response via `provider.translate_structured_batch(...)` when the provider reports `supports_structured_batch()` (OpenAI, Azure AI Foundry, Gemini). Incompatible with `--chunk-context-window` > 0. On parse/validation failure, the pipeline splits batches and falls back to `translate_batch` for failing items.
+  - **Default (structured EPUB batch on):** pack multiple chunks into one JSON request/response via `provider.translate_structured_batch(...)` when the provider reports `supports_structured_batch()` (OpenAI, Azure AI Foundry, Gemini). Unsupported providers log a warning and use the standard per-chunk path. Disable with `--no-structured-epub-batch` (CLI) or turn off the Translate screen toggle. Incompatible with `--chunk-context-window` > 0. On parse/validation failure, the pipeline splits batches and falls back to `translate_batch` for failing items.
 6. Reassemble translated chunks back to the original node order.
 7. Replace DOM text nodes and repack EPUB.
 
@@ -84,7 +84,7 @@ To reduce repeated translation cost and speed up reruns, the pipeline uses a res
 - `--report-path`: write machine-readable JSON run report.
 - `--chunk-size`: control sentence-aware chunk sizing.
 - `--chunk-context-window`: include neighbor chunks as context (target-only output).
-- `--structured-epub-batch`: EPUB only; JSON multi-item structured batches (supported providers only).
+- `--structured-epub-batch` / `--no-structured-epub-batch`: EPUB only; structured JSON multi-item batches are **on by default** for supported providers; pass `--no-structured-epub-batch` to force the legacy per-chunk batching path.
 - `--structured-epub-batch-max-chars`: approximate max source characters per structured batch (default 8000, minimum 2000).
 
 ## Runtime Contract

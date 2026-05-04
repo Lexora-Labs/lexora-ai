@@ -26,6 +26,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Derive release versions from tag
+        shell: pwsh
+        run: |
+          $rawTag = "${{ github.ref_name }}"
+          if (-not $rawTag) {
+            $rawTag = "v0.0.0"
+          }
+          $trimmed = $rawTag.Trim()
+          if (-not $trimmed.StartsWith("v")) {
+            $trimmed = "v$trimmed"
+          }
+          $semver = $trimmed.TrimStart("v")
+          if ($semver -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
+            throw "Release tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.BUILD (got '$rawTag')."
+          }
+
+          $parts = $semver.Split(".")
+          if ($parts.Count -eq 3) {
+            $msiVersion = "$semver.0"
+          } else {
+            $msiVersion = $semver
+            $semver = "$($parts[0]).$($parts[1]).$($parts[2])"
+          }
+
+          "RELEASE_TAG=$trimmed" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION_SEMVER=$semver" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MSI_PRODUCT_VERSION=$msiVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Release tag: $trimmed"
+          Write-Host "App semver: $semver"
+          Write-Host "MSI ProductVersion: $msiVersion"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -115,12 +146,7 @@ jobs:
           # all files under this directory (LexoraAI.exe + _internal\*).
           $harvestDir = (Resolve-Path "dist\${{ env.APP_NAME }}").Path
 
-          # MSI version must be numeric n.n.n.n - derive from tag vX.Y.Z.
-          # workflow_dispatch has no tag so fall back to 0.0.0.0 for manual runs.
-          $tag = "${{ github.ref_name }}"
-          $ver = $tag.TrimStart('v')
-          if ($ver -match '^\d+\.\d+\.\d+$') { $ver = "$ver.0" }
-          if ($ver -notmatch '^\d+\.\d+\.\d+\.\d+$') { $ver = "0.0.0.0" }
+          $ver = "${env:MSI_PRODUCT_VERSION}"
           Write-Host "MSI ProductVersion: $ver"
 
           # --- 1) Harvest the onedir folder ---------------------------------
@@ -187,6 +213,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Derive release versions from tag
+        shell: bash
+        run: |
+          raw_tag="${GITHUB_REF_NAME:-v0.0.0}"
+          if [[ "${raw_tag}" != v* ]]; then
+            raw_tag="v${raw_tag}"
+          fi
+          semver="${raw_tag#v}"
+          if [[ ! "${semver}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Release tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.BUILD (got '${raw_tag}')."
+            exit 1
+          fi
+          IFS='.' read -r major minor patch build <<< "${semver}"
+          app_semver="${major}.${minor}.${patch}"
+          echo "RELEASE_TAG=${raw_tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION_SEMVER=${app_semver}" >> "${GITHUB_ENV}"
+          echo "App semver: ${app_semver}"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -206,6 +250,7 @@ jobs:
             -i lexora-ai-icon.ico \
             -n "${APP_NAME}" \
             --product-name "Lexora AI" \
+            --product-version "${APP_VERSION_SEMVER}" \
             --add-data "assets:assets" \
             --add-data "lexora-ai-icon.ico:."
 
