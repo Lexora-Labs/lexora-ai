@@ -8,10 +8,76 @@ This follows the Strategy Pattern as defined in vibe-context.md:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, FrozenSet
 from enum import Enum
 
 from .structured_batch import StructuredBatchItem
+
+# Canonical machine values (English) for prompts and cache identity.
+TRANSLATION_TONES: FrozenSet[str] = frozenset(
+    {"neutral", "formal", "casual", "literary", "academic", "marketing"}
+)
+TRANSLATION_DOMAINS: FrozenSet[str] = frozenset(
+    {"general", "fiction", "technical", "academic", "legal", "medical", "business"}
+)
+
+DEFAULT_TRANSLATION_TONE = "neutral"
+DEFAULT_TRANSLATION_DOMAIN = "general"
+
+# EPUB neighbor-chunk context mode: prepended to the user system message (never replaces user tone/domain).
+CONTEXT_CHUNK_SYSTEM_RULE = (
+    "Translate only the text between TARGET_CHUNK_START and TARGET_CHUNK_END. "
+    "Use neighbor context for coherence but output only the translated target chunk. "
+    "Do not include labels or any extra commentary."
+)
+
+
+def normalize_tone(value: Optional[str]) -> str:
+    v = (value or DEFAULT_TRANSLATION_TONE).strip().lower()
+    if v not in TRANSLATION_TONES:
+        allowed = ", ".join(sorted(TRANSLATION_TONES))
+        raise ValueError(f"Invalid tone '{value}'. Allowed: {allowed}")
+    return v
+
+
+def normalize_domain(value: Optional[str]) -> str:
+    v = (value or DEFAULT_TRANSLATION_DOMAIN).strip().lower()
+    if v not in TRANSLATION_DOMAINS:
+        allowed = ", ".join(sorted(TRANSLATION_DOMAINS))
+        raise ValueError(f"Invalid domain '{value}'. Allowed: {allowed}")
+    return v
+
+
+def build_system_message(config: "TranslationConfig") -> str:
+    """
+    Compose the default literary translator system message with optional tone, domain,
+    and free-text instruction. Defaults (neutral/general/no instruction) match the
+    historical single baseline paragraph exactly.
+    """
+    base = (
+        "You are a professional literary translator. "
+        "Translate faithfully, fluently, and maintain formatting where possible. "
+        "Do not add explanations or notes. Output only the translation."
+    )
+    parts: List[str] = [base]
+    domain = normalize_domain(config.domain)
+    if domain != DEFAULT_TRANSLATION_DOMAIN:
+        parts.append(
+            f"Subject domain: {domain}. "
+            "Use terminology and conventions appropriate to this domain."
+        )
+    tone = normalize_tone(config.tone)
+    if tone != DEFAULT_TRANSLATION_TONE:
+        parts.append(f"Voice and tone: {tone}.")
+    user_inst = (config.custom_instruction or "").strip()
+    if user_inst:
+        parts.append("Additional user instruction:\n" + user_inst)
+    return "\n\n".join(parts)
+
+
+def compose_neighbor_context_system_instruction(config: "TranslationConfig") -> str:
+    """System message for EPUB neighbor-window mode: delimiter rules + user steering."""
+    return CONTEXT_CHUNK_SYSTEM_RULE + "\n\n" + build_system_message(config)
 
 
 class TranslationMode(Enum):
@@ -97,6 +163,10 @@ class TranslationConfig:
     temperature: float = 0.2
     max_tokens: Optional[int] = None
     custom_instruction: Optional[str] = None
+    tone: Optional[str] = None
+    domain: Optional[str] = None
+    #: When set, ``get_system_instruction`` returns this verbatim (internal EPUB context-window path).
+    system_instruction_override: Optional[str] = None
 
 
 class BaseTranslator(ABC):
@@ -215,11 +285,6 @@ class BaseTranslator(ABC):
         
         Override in subclass for provider-specific instructions.
         """
-        if config.custom_instruction:
-            return config.custom_instruction
-            
-        return (
-            "You are a professional literary translator. "
-            "Translate faithfully, fluently, and maintain formatting where possible. "
-            "Do not add explanations or notes. Output only the translation."
-        )
+        if config.system_instruction_override is not None:
+            return config.system_instruction_override
+        return build_system_message(config)

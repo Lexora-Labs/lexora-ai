@@ -2,6 +2,10 @@
 
 Lexora-AI supports multiple AI translation providers via the Strategy Pattern. All providers implement the `BaseTranslator` interface and return a standardized `TranslationResult` with Bilingual JSON AST.
 
+### Context parameters (tone, domain, instruction)
+
+Optional `TranslationConfig.tone`, `TranslationConfig.domain`, and `TranslationConfig.custom_instruction` are composed by `build_system_message` in `src/lexora/core/base_translator.py` into one system message (see `BaseTranslator.get_system_instruction`). **OpenAI**, **Azure OpenAI**, and **Anthropic** typically adhere closely. **Gemini** and **Qwen** can be looser (e.g., occasional instruction echo or drift); validate high-stakes runs per provider.
+
 ---
 
 ## Quick Start

@@ -32,6 +32,10 @@ Top-level fields:
 - `error` (present on `failed`)
 - `token_usage` (present on `success` when available)
 - `translation_summary` (present on EPUB runs)
+- `tone` (machine string: `neutral`, `formal`, `casual`, `literary`, `academic`, `marketing`)
+- `domain` (machine string: `general`, `fiction`, `technical`, `academic`, `legal`, `medical`, `business`)
+- `instruction_length` (integer; length of trimmed free-text instruction, zero if omitted)
+- `instruction_hash` (SHA-256 hex of the composed system message used for cache identity—never the raw instruction text)
 
 ## Translation Summary Fields (EPUB)
 
