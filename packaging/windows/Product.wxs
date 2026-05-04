@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product
@@ -15,11 +16,12 @@
 
     <!-- UI -->
     <Property Id="INSTALLLEVEL" Value="1" />
-    <!-- IMPORTANT: bind WiX UI "InstallDir" to your folder -->
+    <!-- IMPORTANT: bind WiX UI "InstallDir" to your application folder -->
     <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
     <UIRef Id="WixUI_FeatureTree" />
     <UIRef Id="WixUI_ErrorProgressText" />
 
+    <!-- Features -->
     <Feature
       Id="MainFeature"
       Title="Lexora AI"
@@ -29,11 +31,13 @@
       Absent="disallow"
       ConfigurableDirectory="APPLICATIONFOLDER">
 
+      <!-- Harvested files from heat.exe (PyInstaller onedir dist\LexoraAI\...) -->
       <ComponentGroupRef Id="LexoraComponents" />
 
-      <!-- Always install Start Menu entry -->
+      <!-- Always install Start Menu shortcut -->
       <ComponentRef Id="StartMenuShortcut" />
 
+      <!-- Optional Desktop shortcut -->
       <Feature
         Id="DesktopShortcutFeature"
         Title="Desktop shortcut"
@@ -52,7 +56,9 @@
 
   </Product>
 
-  <!-- Directories -->
+  <!-- ========================================================= -->
+  <!-- Directories: Install path under Program Files (x64)        -->
+  <!-- ========================================================= -->
   <Fragment>
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -60,20 +66,26 @@
           <Directory Id="APPLICATIONFOLDER" Name="Lexora AI" />
         </Directory>
       </Directory>
-
-      <!-- Start Menu -->
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="StartMenuDir" Name="Lexora AI" />
-      </Directory>
-
-      <!-- All-users desktop -->
-      <Directory Id="DesktopFolder" />
     </Directory>
   </Fragment>
 
-  <!-- Shortcut components -->
+  <!-- ========================================================= -->
+  <!-- All-users Start Menu folder (do NOT nest under TARGETDIR) -->
+  <!-- ========================================================= -->
   <Fragment>
+    <DirectoryRef Id="CommonProgramsFolder">
+      <Directory Id="StartMenuDir" Name="Lexora AI" />
+    </DirectoryRef>
+  </Fragment>
+
+  <!-- ========================================================= -->
+  <!-- Shortcuts (per-machine): Start Menu + optional Desktop     -->
+  <!-- ========================================================= -->
+  <Fragment>
+
+    <!-- Start Menu shortcut (All Users) -->
     <Component Id="StartMenuShortcut" Directory="StartMenuDir" Guid="*">
+      <!-- Ensure folder exists even if empty -->
       <CreateFolder />
 
       <Shortcut
@@ -87,6 +99,7 @@
 
       <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall" />
 
+      <!-- Per-machine KeyPath (HKLM) -->
       <RegistryValue
         Root="HKLM"
         Key="Software\LexoraLabs\LexoraAI\Shortcuts"
@@ -96,7 +109,10 @@
         KeyPath="yes" />
     </Component>
 
-    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
+    <!-- Desktop shortcut (All Users) -->
+    <!-- Uses CommonDesktopFolder directly, so it is not "user profile". -->
+    <Component Id="DesktopShortcut" Directory="CommonDesktopFolder" Guid="*">
+
       <Shortcut
         Id="DesktopShortcut"
         Name="Lexora AI"
@@ -106,6 +122,7 @@
         Icon="LexoraIcon"
         Advertise="no" />
 
+      <!-- Per-machine KeyPath (HKLM) -->
       <RegistryValue
         Root="HKLM"
         Key="Software\LexoraLabs\LexoraAI\Shortcuts"
@@ -114,6 +131,7 @@
         Value="1"
         KeyPath="yes" />
     </Component>
+
   </Fragment>
 
 </Wix>
