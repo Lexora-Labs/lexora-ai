@@ -152,6 +152,10 @@ _EN: dict[str, str] = {
     "translate.domain.business": "Business",
     "translate.instruction": "Custom instruction",
     "translate.instruction.hint": "Optional. Leave blank for default translator behavior.",
+    "translate.instruction.placeholder": (
+        "Example: Keep chapter titles unchanged; use a natural, modern voice in dialogue; "
+        "leave Latin medical terms as-is; do not translate text inside <code> blocks."
+    ),
     "translate.instruction.too_long": "Custom instruction is too long. Shorten the text and try again.",
     "translate.advanced_config": "Advanced config",
     "translate.expand_advanced": "Expand advanced config",
@@ -324,6 +328,10 @@ _VI: dict[str, str] = {
     "translate.domain.business": "Kinh doanh",
     "translate.instruction": "Hướng dẫn tùy chỉnh",
     "translate.instruction.hint": "Tùy chọn. Để trống để dùng hành vi dịch mặc định.",
+    "translate.instruction.placeholder": (
+        "Ví dụ: Giữ nguyên tiêu đề chương; dùng giọng đối thoại tự nhiên, hiện đại; "
+        "giữ nguyên thuật ngữ y học Latin; không dịch nội dung trong thẻ <code>."
+    ),
     "translate.instruction.too_long": "Hướng dẫn quá dài. Hãy rút gọn và thử lại.",
     "translate.advanced_config": "Cấu hình nâng cao",
     "translate.expand_advanced": "Mở rộng cấu hình nâng cao",

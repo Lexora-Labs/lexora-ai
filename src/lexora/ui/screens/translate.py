@@ -349,7 +349,8 @@ class TranslateScreen(ft.Container):
         )
         self.instruction_field = ft.TextField(
             label=self._t("translate.instruction"),
-            hint_text=self._t("translate.instruction.hint"),
+            hint_text=self._t("translate.instruction.placeholder"),
+            tooltip=self._t("translate.instruction.hint"),
             multiline=True,
             min_lines=2,
             max_lines=6,
