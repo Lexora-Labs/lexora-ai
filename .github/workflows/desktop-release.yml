@@ -319,13 +319,18 @@ jobs:
       - name: Create/Update GitHub Release and upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.create-tag.outputs.release_tag || github.ref_name }}
         run: |
-          tag="${{ needs.create-tag.outputs.release_tag || github.ref_name }}"
-          python3 - <<PYEOF
-import re, sys
-tag = "${tag}"
+          tag="${RELEASE_TAG}"
+          # Extract the changelog section for this tag and write it to a temp file.
+          # The heredoc avoids interpolating the tag into Python source; it is passed
+          # via the RELEASE_TAG environment variable instead.
+          python3 - <<'PYEOF'
+import re, os
+tag = os.environ['RELEASE_TAG']
 try:
     text = open('CHANGELOG.md').read()
+    # Match the section header "## [vX.Y.Z]" and collect lines until the next "## [" header.
     m = re.search(r'## \[' + re.escape(tag) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)', text, re.DOTALL)
     notes = m.group(1).strip() if m else 'See [CHANGELOG.md](CHANGELOG.md) for details.'
 except Exception:
