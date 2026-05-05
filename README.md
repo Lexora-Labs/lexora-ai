@@ -110,6 +110,16 @@ Everything below lives on the **Translate** screen and applies only to the run y
 - **Output file** — leave blank to use the automatic `library/…` naming pattern shown in the hint, or set a full path; **Reset default** restores the auto path for the current inputs.
 - **Glossary** — **Select glossary JSON** / **Clear glossary** appear here; glossary application is **not reliable yet** (see [Limitations](#limitations-current)).
 
+**Context** (card below Translation settings)
+
+Optional steering for the model. Defaults match prior behavior.
+
+- **Tone** — `Neutral` (default), `Formal`, `Casual`, `Literary`, `Academic`, `Marketing`.
+- **Domain** — `General` (default), `Fiction`, `Technical`, `Academic`, `Legal`, `Medical`, `Business`. `Legal` and `Medical` show an inline "AI translations are not a substitute for professional review." disclaimer.
+- **Custom instruction** — multiline free-text steering up to ~8,000 characters (e.g. character-name handling, formality rules, house style). UI labels are bilingual (EN/VI); machine values for Tone/Domain stay in English so prompt and cache identity remain deterministic.
+
+Changing any of these on a previously translated book reruns translation only for new chapters; cached chapters are kept. Tone, domain, and the **hash + length** of the instruction (never the raw text) are recorded in the run report.
+
 **Advanced config** (collapsible section below Translation settings)
 
 Use the expand control to show tuning options that mirror CLI-style flags:
@@ -151,7 +161,8 @@ For deeper behavior (document selection, structured batching, reports), see `**d
 
 Planned direction (subject to prioritization):
 
-- **Translation context, instructions, and glossary** — richer per-job controls (custom context, translator instructions, and a working glossary path in UI and pipeline).
+- **Saved context presets and project defaults** — reusable Tone/Domain/Instruction trios as presets, plus per-project defaults (extends the new Context card; tracked as **LAI-T-060**, deferred until after v1).
+- **Working glossary path** — wire the glossary JSON option in UI and pipeline end-to-end.
 - **Image translation** — translate text inside figures/illustrations in ebooks where technically feasible, with safe fallbacks when OCR or layout is ambiguous.
 - **First-class Gemini & Claude UX** — smoother model selection, clearer setup, and validation in the UI for Google Gemini and Anthropic Claude paths.
 - **Bilingual mode in the UI** — expose replace vs bilingual output as a first-class per-job control end-to-end (aligned with the CLI options).
@@ -162,8 +173,8 @@ Planned direction (subject to prioritization):
 
 ### UI
 
-- **Translate** — pick file, provider, model, languages, output path (glossary UI is not wired yet; see [Limitations](#limitations-current)).
-- **Jobs** — queue, cancel/re-run, logs, open output folder/file.
+- **Translate** — pick file, provider, model, languages, output path; **Context** card for optional Tone / Domain / custom instruction (glossary UI is not wired yet; see [Limitations](#limitations-current)).
+- **Jobs** — queue, cancel/re-run, logs, open output folder/file. Re-runs inherit the original Tone/Domain/Instruction.
 - **Settings** — keys, cache, appearance, language.
 
 ### CLI
@@ -177,7 +188,29 @@ lexora translate book.epub out.epub --target vi --service gemini --limit-docs 1
 lexora translate book.epub out.epub --target vi --service openai --no-structured-epub-batch
 ```
 
-For structured EPUB batching, cache scopes, and document ranges, see `**docs/translation-logic.md**` and `**lexora translate --help**`.
+**Context flags** (optional steering, mirror the UI **Context** card):
+
+```bash
+# Tone + domain
+lexora translate book.epub out.epub --target vi --service openai \
+  --tone literary --domain fiction
+
+# Inline custom instruction
+lexora translate book.epub out.epub --target vi --service openai \
+  --instruction "Keep character names in original spelling; prefer formal pronouns."
+
+# House-style guide from a UTF-8 file (mutually exclusive with --instruction)
+lexora translate book.epub out.epub --target vi --service openai \
+  --instruction-file ./style-guide.txt
+```
+
+Allowed values:
+
+- `--tone`: `neutral` (default), `formal`, `casual`, `literary`, `academic`, `marketing`.
+- `--domain`: `general` (default), `fiction`, `technical`, `academic`, `legal`, `medical`, `business`.
+- `--instruction` / `--instruction-file`: optional, capped at ~8,000 characters; the run report records `tone`, `domain`, `instruction_length`, and `instruction_hash` (never the raw text).
+
+For structured EPUB batching, cache scopes, document ranges, and the full context-parameter contract, see `docs/translation-logic.md`, `docs/translation-run-contract.md`, and `lexora translate --help`.
 
 ---
 
