@@ -2,6 +2,20 @@
 
 All notable changes to Lexora AI are documented here.
 
+## [v0.2.3] - 2026-05-05
+
+### Bug Fixes
+
+- **MSI shortcut placement regression guard (LAI-B-013):** `packaging/windows/Product.wxs` was temporarily reverted to `CommonProgramsFolder` / `CommonDesktopFolder` during ICE cleanup, which made shortcuts land at `D:\Lexora Labs\Lexora AI\` when the MSI was launched from a non-system drive. Restored `ProgramMenuFolder` / `DesktopFolder` (auto-redirected to All Users by `ALLUSERS=1`) and added an explicit regression-guard comment. Documented in `docs/windows-build-and-packaging.md` §7.2.
+- **MSI link errors (LGHT0094 / CNDL0035 / CNDL0004):** Reauthored shortcut components to compile cleanly with WiX 3: `Target="[#LexoraAILauncherExe]"`, `Advertise="no"`, HKLM `RegistryValue` KeyPath. Heat output is post-processed by the new `packaging/windows/wix-patch-harvested.ps1` to assign the stable launcher `File` id. `light.exe` runs with `-sval` to bypass ICE38/ICE43/ICE57 (HKLM KeyPath + all-users shortcuts is an intentional trade-off; HKCU broke per-machine installs).
+
+### Documentation
+
+- **README:** New **Context** section for the Translate tab (Tone / Domain / Custom instruction with allowed values, ~8 KB cap, EN/VI labels, Legal/Medical disclaimer). New **CLI Context flags** section with examples for `--tone`, `--domain`, `--instruction`, `--instruction-file`. Roadmap updated: split context-presets follow-up (LAI-T-060, deferred post-v1) from the still-pending glossary path.
+- **`docs/todo-list.md`:** LAI-B-013 row records the 2026-05-05 regression and re-fix.
+
+---
+
 ## [v0.2.2] - 2026-05-05
 
 ### Bug Fixes
