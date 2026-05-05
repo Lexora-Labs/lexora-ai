@@ -172,6 +172,8 @@ jobs:
             exit 1
           }
 
+          & .\packaging\windows\wix-patch-harvested.ps1 -HarvestedWxsPath $harvestedWxs
+
           # --- 2) Compile both WXS files ------------------------------------
           $productObj    = Join-Path $wixOut "Product.wixobj"
           $harvestedObj  = Join-Path $wixOut "LexoraComponents.wixobj"
@@ -189,7 +191,8 @@ jobs:
             "$harvestedWxs"
 
           # --- 3) Link into MSI ---------------------------------------------
-          & (Join-Path $env:WIX_BIN "light.exe") -ext WixUIExtension `
+          # -sval: skip ICE (ICE38/43/57 vs HKLM KeyPath + Common* shortcuts — see Product.wxs)
+          & (Join-Path $env:WIX_BIN "light.exe") -sval -ext WixUIExtension `
             -out "${{ env.APP_NAME }}-windows-amd64.msi" `
             "$productObj" "$harvestedObj"
 

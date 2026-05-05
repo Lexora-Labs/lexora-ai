@@ -161,6 +161,8 @@ Write-Host "`n=== heat: harvesting $harvestDir ===" -ForegroundColor Cyan
   -out $harvestedWxs
 if (-not (Test-Path $harvestedWxs)) { throw "heat.exe failed." }
 
+& (Join-Path $PSScriptRoot "wix-patch-harvested.ps1") -HarvestedWxsPath $harvestedWxs
+
 # 4b) candle.exe: compile both WXS files
 Write-Host "`n=== candle: compiling WXS ===" -ForegroundColor Cyan
 & (Join-Path $wixBin "candle.exe") -arch x64 `
@@ -177,7 +179,9 @@ Write-Host "`n=== candle: compiling WXS ===" -ForegroundColor Cyan
 
 # 4c) light.exe: link into MSI
 Write-Host "`n=== light: linking MSI ===" -ForegroundColor Cyan
-& (Join-Path $wixBin "light.exe") -ext WixUIExtension `
+# -sval: skip MSI ICE pass. ICE38/43/57 conflict with HKLM KeyPath + Common*
+# Start Menu/Desktop shortcuts that we need for visible per-machine installs.
+& (Join-Path $wixBin "light.exe") -sval -ext WixUIExtension `
   -out $msiName `
   "$productObj" "$harvestedObj"
 

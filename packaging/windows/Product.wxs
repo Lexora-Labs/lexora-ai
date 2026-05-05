@@ -66,40 +66,42 @@
           <Directory Id="APPLICATIONFOLDER" Name="Lexora AI" />
         </Directory>
       </Directory>
+      <!-- IMPORTANT (regression guard, see LAI-B-013):
+           Use ProgramMenuFolder / DesktopFolder, NOT CommonProgramsFolder /
+           CommonDesktopFolder. With InstallScope="perMachine" (ALLUSERS=1),
+           Windows Installer auto-redirects these to the All Users locations.
+           Explicit Common* ids resolve to the install drive root (e.g. D:\)
+           when the MSI is launched from a non-system drive, so shortcuts end
+           up at "D:\Lexora Labs\Lexora AI" instead of the Start Menu. -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="StartMenuDir" Name="Lexora AI" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
     </Directory>
   </Fragment>
 
   <!-- ========================================================= -->
-  <!-- All-users Start Menu folder (do NOT nest under TARGETDIR) -->
-  <!-- ========================================================= -->
-  <Fragment>
-    <DirectoryRef Id="CommonProgramsFolder">
-      <Directory Id="StartMenuDir" Name="Lexora AI" />
-    </DirectoryRef>
-  </Fragment>
-
-  <!-- ========================================================= -->
-  <!-- Shortcuts (per-machine): Start Menu + optional Desktop     -->
+  <!-- Non-advertised shortcuts → all-users Start Menu / Desktop          -->
+  <!--   ALLUSERS=1 (perMachine) redirects ProgramMenuFolder/DesktopFolder -->
+  <!--   to Common* automatically; do NOT hard-code Common* ids (LAI-B-013) -->
+  <!-- Target: stable File Id from heat + wix-patch-harvested.ps1          -->
+  <!-- WiX cannot use Advertise=yes with Target=[#file] (CNDL0035).        -->
+  <!-- HKLM KeyPath + ProgramMenuFolder shortcuts trip ICE38/43/57;        -->
+  <!-- light uses -sval. HKCU made shortcuts vanish on per-machine.        -->
   <!-- ========================================================= -->
   <Fragment>
 
-    <!-- Start Menu shortcut (All Users) -->
     <Component Id="StartMenuShortcut" Directory="StartMenuDir" Guid="*">
-      <!-- Ensure folder exists even if empty -->
       <CreateFolder />
-
       <Shortcut
         Id="StartMenuShortcut"
         Name="Lexora AI"
         Description="Launch Lexora AI"
-        Target="[APPLICATIONFOLDER]LexoraAI.exe"
+        Target="[#LexoraAILauncherExe]"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraIcon"
         Advertise="no" />
-
       <RemoveFolder Id="RemoveStartMenuDir" Directory="StartMenuDir" On="uninstall" />
-
-      <!-- Per-machine KeyPath (HKLM) -->
       <RegistryValue
         Root="HKLM"
         Key="Software\LexoraLabs\LexoraAI\Shortcuts"
@@ -109,20 +111,15 @@
         KeyPath="yes" />
     </Component>
 
-    <!-- Desktop shortcut (All Users) -->
-    <!-- Uses CommonDesktopFolder directly, so it is not "user profile". -->
-    <Component Id="DesktopShortcut" Directory="CommonDesktopFolder" Guid="*">
-
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
       <Shortcut
         Id="DesktopShortcut"
         Name="Lexora AI"
         Description="Launch Lexora AI"
-        Target="[APPLICATIONFOLDER]LexoraAI.exe"
+        Target="[#LexoraAILauncherExe]"
         WorkingDirectory="APPLICATIONFOLDER"
         Icon="LexoraIcon"
         Advertise="no" />
-
-      <!-- Per-machine KeyPath (HKLM) -->
       <RegistryValue
         Root="HKLM"
         Key="Software\LexoraLabs\LexoraAI\Shortcuts"

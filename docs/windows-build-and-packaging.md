@@ -220,6 +220,8 @@ Typical workflows:
     -var "var.HarvestSource" `
     -out "$out\LexoraComponents.wxs"
 
+  & .\packaging\windows\wix-patch-harvested.ps1 -HarvestedWxsPath "$out\LexoraComponents.wxs"
+
   & "$wixBin\candle.exe" -arch x64 `
     "-dHarvestSource=$harvest" "-dSourceDir=$harvest" "-dProductVersion=0.0.0.0" `
     -out "$out\Product.wixobj" "packaging\windows\Product.wxs"
@@ -228,7 +230,7 @@ Typical workflows:
     "-dHarvestSource=$harvest" `
     -out "$out\LexoraComponents.wixobj" "$out\LexoraComponents.wxs"
 
-  & "$wixBin\light.exe" -ext WixUIExtension `
+  & "$wixBin\light.exe" -sval -ext WixUIExtension `
     -out "LexoraAI-windows-amd64.msi" `
     "$out\Product.wixobj" "$out\LexoraComponents.wixobj"
   ```
@@ -262,6 +264,26 @@ Typical workflows:
 
 ### 7.2 MSI installs but shortcuts don't appear
 
+Shortcuts are **non-advertised** with `Target="[#LexoraAILauncherExe]"`.
+After each `heat.exe` run, `packaging\windows\wix-patch-harvested.ps1`
+assigns a stable `File` id to `LexoraAI.exe` so that `Target` resolves. If
+you run `heat`/`candle`/`light` manually, run the patch before `candle` on
+`LexoraComponents.wxs`.
+
+The link step uses **`light.exe -sval`** (skip ICE validation): Windows
+Installer ICE38/ICE43/ICE57 flag the combination of **HKLM** component
+KeyPaths with all-users Start Menu / Desktop shortcuts, but **HKCU**
+KeyPaths caused shortcuts to not appear for per-machine installs.
+Skipping ICE for this package is an intentional trade-off.
+
+The directory ids for the Start Menu and Desktop folders are
+**`ProgramMenuFolder`** and **`DesktopFolder`** (not `CommonProgramsFolder`
+/ `CommonDesktopFolder`). With `InstallScope="perMachine"` these auto-redirect
+to the All Users locations. Hard-coding `Common*` ids resolves to the install
+drive root (e.g. `D:\Lexora Labs\Lexora AI\`) when the MSI is launched from
+a non-system drive — that bug regressed once (**LAI-B-013**); the comment
+in `Product.wxs` is the regression guard.
+
 The installer log is the single source of truth:
 
 ```powershell
@@ -280,10 +302,8 @@ What to check:
   If the `.lnk` file still doesn't appear afterwards, look at the
   `CreateShortcuts:` line in the log for the resolved target path.
 - `Request: Null` or `Action: Null` → Windows Installer dropped the
-  component. The usual culprit is a per-user `KeyPath` (HKCU) inside a
-  per-machine install. Our `Product.wxs` uses HKLM — if you've edited it,
-  make sure the `RegistryValue` under each shortcut component keeps
-  `Root="HKLM"`.
+  component (e.g. optional desktop feature not selected, or a bad `File` id
+  so `[#LexoraAILauncherExe]` does not bind).
 
 ### 7.3 heat.exe produces an empty `LexoraComponents.wxs`
 
