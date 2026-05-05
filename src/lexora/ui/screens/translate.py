@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -21,8 +22,18 @@ from lexora.cli import (
     _resolve_cache_path,
     _write_run_report,
 )
+from lexora.core.base_translator import (
+    TRANSLATION_DOMAINS,
+    TRANSLATION_TONES,
+    TranslationConfig,
+    TranslationMode,
+    build_system_message,
+    compose_neighbor_context_system_instruction,
+    normalize_domain,
+    normalize_tone,
+)
 from lexora.providers import canonical_provider_name, create_provider
-from lexora.translator import TranslationCancelled, Translator
+from lexora.translator import MAX_TRANSLATION_INSTRUCTION_CHARS, TranslationCancelled, Translator
 from lexora.logging_framework import build_logging_config, configure_logging, get_ui_log_events
 from lexora.runtime_paths import user_data_dir
 from lexora.secrets import get_setting
@@ -61,6 +72,9 @@ UI_PROVIDER_TO_CANONICAL = {
 }
 
 load_dotenv()
+
+# UI caps free-text instruction tighter than the engine maximum.
+UI_INSTRUCTION_CAP = min(2000, MAX_TRANSLATION_INSTRUCTION_CHARS)
 
 
 def default_ui_library_dir() -> Path:
@@ -304,6 +318,70 @@ class TranslateScreen(ft.Container):
             ),
         )
 
+        self.tone_dropdown = ft.Dropdown(
+            label=self._t("translate.tone"),
+            options=[
+                ft.dropdown.Option(key=k, text=self._t(f"translate.tone.{k}"))
+                for k in sorted(TRANSLATION_TONES)
+            ],
+            value="neutral",
+            width=200,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+        )
+        self.domain_dropdown = ft.Dropdown(
+            label=self._t("translate.domain"),
+            options=[
+                ft.dropdown.Option(key=k, text=self._t(f"translate.domain.{k}"))
+                for k in sorted(TRANSLATION_DOMAINS)
+            ],
+            value="general",
+            width=200,
+            height=DROPDOWN_HEIGHT,
+            text_size=CONTROL_TEXT_SIZE,
+            on_change=self._on_domain_change,
+        )
+        self.domain_disclaimer = ft.Text(
+            self._t("translate.context.compliance_disclaimer"),
+            size=11,
+            color=Colors.TEXT_SECONDARY,
+            visible=False,
+        )
+        self.instruction_field = ft.TextField(
+            label=self._t("translate.instruction"),
+            hint_text=self._t("translate.instruction.placeholder"),
+            tooltip=self._t("translate.instruction.hint"),
+            multiline=True,
+            min_lines=2,
+            max_lines=6,
+            max_length=UI_INSTRUCTION_CAP,
+            width=600,
+            text_size=CONTROL_TEXT_SIZE,
+        )
+        context_section = ft.Container(
+            padding=10,
+            bgcolor=Colors.SURFACE,
+            border_radius=10,
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Icon(ft.icons.TUNE),
+                            ft.Text(self._t("translate.context.title"), size=16, weight=ft.FontWeight.W_600),
+                        ],
+                        spacing=8,
+                    ),
+                    ft.Text(self._t("translate.context.subtitle"), size=12, color=Colors.TEXT_SECONDARY),
+                    ft.Container(height=6),
+                    ft.Row([self.tone_dropdown, self.domain_dropdown], spacing=12, wrap=True),
+                    self.domain_disclaimer,
+                    ft.Container(height=4),
+                    self.instruction_field,
+                ],
+                spacing=4,
+            ),
+        )
+
         self.provider_dropdown = ft.Dropdown(
             label=self._t("translate.provider"),
             options=[ft.dropdown.Option(p) for p in PROVIDERS.keys()],
@@ -524,6 +602,8 @@ class TranslateScreen(ft.Container):
             [
                 file_section,
                 ft.Container(height=16),
+                context_section,
+                ft.Container(height=16),
                 settings_section,
                 ft.Container(height=16),
                 advanced_section,
@@ -602,6 +682,11 @@ class TranslateScreen(ft.Container):
     def _clear_glossary(self, _: ft.ControlEvent) -> None:
         self._selected_glossary = None
         self.glossary_path.value = ""
+        self._page.update()
+
+    def _on_domain_change(self, e: ft.ControlEvent) -> None:
+        value = (e.control.value or "general").strip().lower()
+        self.domain_disclaimer.visible = value in ("legal", "medical")
         self._page.update()
 
     def _on_provider_change(self, e: ft.ControlEvent) -> None:
@@ -717,6 +802,14 @@ class TranslateScreen(ft.Container):
         if structured_max_chars < 2000:
             raise ValueError("--structured-epub-batch-max-chars must be >= 2000")
 
+        tone_key = (self.tone_dropdown.value or "neutral").strip().lower()
+        domain_key = (self.domain_dropdown.value or "general").strip().lower()
+        normalize_tone(tone_key)
+        normalize_domain(domain_key)
+        instruction_text = (self.instruction_field.value or "").strip()
+        if len(instruction_text) > UI_INSTRUCTION_CAP:
+            raise ValueError(self._t("translate.instruction.too_long"))
+
         return {
             "input_file": self._selected_file,
             "book_title": self._selected_name or Path(self._selected_file).name,
@@ -735,6 +828,9 @@ class TranslateScreen(ft.Container):
             "chunk_context_window": chunk_context_window,
             "structured_epub_batch": structured_epub_batch,
             "structured_epub_batch_max_chars": structured_max_chars,
+            "tone": tone_key,
+            "domain": domain_key,
+            "instruction": instruction_text or "",
         }
 
     def _start_or_queue_job(self, request: Dict[str, Any]) -> None:
@@ -965,6 +1061,7 @@ class TranslateScreen(ft.Container):
             clear_cache = bool(cache_settings["clear_cache"])
             report_payload["cache_scope"] = cache_scope
 
+            instr_for_log = (request.get("instruction") or "").strip()
             run_params = {
                 "input_file": request["input_file"],
                 "provider_label": provider_label,
@@ -985,11 +1082,45 @@ class TranslateScreen(ft.Container):
                 "structured_epub_batch": structured_epub_batch,
                 "structured_epub_batch_max_chars": structured_max_chars,
                 "report_path": request["report_path"],
+                "tone": request.get("tone", "neutral"),
+                "domain": request.get("domain", "general"),
+                "instruction_length": len(instr_for_log),
             }
             self._logger.info("translation.run.parameters | %s", run_params)
             self._log_ui_action("Parameters logged to terminal")
 
             glossary = _load_glossary(request["glossary_path"])
+            tone_n = normalize_tone(request.get("tone"))
+            domain_n = normalize_domain(request.get("domain"))
+            instr_n = (request.get("instruction") or "").strip() or None
+            if instr_n and len(instr_n) > MAX_TRANSLATION_INSTRUCTION_CHARS:
+                raise ValueError(
+                    f"Instruction exceeds max length ({MAX_TRANSLATION_INSTRUCTION_CHARS} characters)"
+                )
+            is_epub = Path(str(request["input_file"])).suffix.lower() == ".epub"
+            neighbor_ctx = bool(is_epub and chunk_context_window > 0)
+            mode_enum = TranslationMode.BILINGUAL if mode == "bilingual" else TranslationMode.REPLACE
+            cfg_report = TranslationConfig(
+                source_language=source_language,
+                target_language=target_lang,
+                mode=mode_enum,
+                glossary=glossary,
+                tone=tone_n,
+                domain=domain_n,
+                custom_instruction=instr_n,
+            )
+            sys_for_hash = (
+                compose_neighbor_context_system_instruction(cfg_report)
+                if neighbor_ctx
+                else build_system_message(cfg_report)
+            )
+            report_payload["tone"] = tone_n
+            report_payload["domain"] = domain_n
+            report_payload["instruction_length"] = len(instr_n or "")
+            report_payload["instruction_hash"] = hashlib.sha256(
+                sys_for_hash.encode("utf-8")
+            ).hexdigest()
+
             cache_path = _resolve_cache_path(
                 input_file=request["input_file"],
                 cache_scope=cache_scope,
@@ -1062,6 +1193,9 @@ class TranslateScreen(ft.Container):
                 chunk_context_window=chunk_context_window,
                 structured_epub_batch=structured_epub_batch,
                 structured_epub_batch_max_chars=structured_max_chars,
+                tone=tone_n,
+                domain=domain_n,
+                instruction=instr_n,
                 on_document_progress=_on_doc_progress,
                 cancel_requested=lambda: self._run_cancel_event.is_set(),
             )

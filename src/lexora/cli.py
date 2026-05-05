@@ -9,9 +9,19 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+from .core.base_translator import (
+    TRANSLATION_DOMAINS,
+    TRANSLATION_TONES,
+    TranslationConfig,
+    TranslationMode,
+    build_system_message,
+    compose_neighbor_context_system_instruction,
+    normalize_domain,
+    normalize_tone,
+)
 from .logging_framework import build_logging_config, configure_logging
 from .runtime_paths import user_data_dir
-from .translator import Translator
+from .translator import MAX_TRANSLATION_INSTRUCTION_CHARS, Translator
 from .providers import (
     canonical_provider_name,
     create_provider,
@@ -30,6 +40,14 @@ DEFAULT_GLOBAL_CACHE_PATH = str(
     user_data_dir() / "cache" / "global_translation_cache.jsonl"
 )
 DEFAULT_PER_EBOOK_CACHE_DIR = str(user_data_dir() / "cache" / "per-ebook")
+
+
+def _load_instruction_file(path: str) -> str:
+    """Read UTF-8 instruction text from a file."""
+    p = Path(path)
+    if not p.exists():
+        raise ValueError(f"Instruction file not found: {path}")
+    return p.read_text(encoding="utf-8")
 
 
 def _load_glossary(glossary_path: str):
@@ -279,6 +297,32 @@ Supported AI providers:
         default=8000,
         help='Approximate max source characters per structured EPUB batch (default: 8000, min: 2000)',
     )
+    translate_parser.add_argument(
+        '--tone',
+        choices=sorted(TRANSLATION_TONES),
+        default='neutral',
+        help='Translation voice/tone (default: neutral)',
+    )
+    translate_parser.add_argument(
+        '--domain',
+        choices=sorted(TRANSLATION_DOMAINS),
+        default='general',
+        help='Subject domain for terminology (default: general)',
+    )
+    translate_parser.add_argument(
+        '--instruction',
+        help=(
+            'Optional free-text steering appended to the system message '
+            f'(max {MAX_TRANSLATION_INSTRUCTION_CHARS} chars; mutually exclusive with --instruction-file)'
+        ),
+    )
+    translate_parser.add_argument(
+        '--instruction-file',
+        help=(
+            'Path to UTF-8 file with optional instruction text '
+            f'(max {MAX_TRANSLATION_INSTRUCTION_CHARS} chars; mutually exclusive with --instruction)'
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -324,6 +368,21 @@ Supported AI providers:
             report_payload["provider"] = selected_provider
             glossary = _load_glossary(args.glossary)
             report_payload["glossary_terms"] = len(glossary)
+
+            if args.instruction and args.instruction_file:
+                raise ValueError("Use either --instruction or --instruction-file, not both")
+            instruction_final: str | None = None
+            if args.instruction_file:
+                instruction_final = _load_instruction_file(args.instruction_file).strip() or None
+            elif args.instruction:
+                instruction_final = (args.instruction or "").strip() or None
+            if instruction_final and len(instruction_final) > MAX_TRANSLATION_INSTRUCTION_CHARS:
+                raise ValueError(
+                    f"Instruction exceeds max length ({MAX_TRANSLATION_INSTRUCTION_CHARS} characters)"
+                )
+            tone_n = normalize_tone(args.tone)
+            domain_n = normalize_domain(args.domain)
+
             cache_path = _resolve_cache_path(
                 input_file=args.input,
                 cache_scope=args.cache_scope,
@@ -365,6 +424,32 @@ Supported AI providers:
                 raise FileNotFoundError(f"Input file not found: {args.input}")
             translator._get_reader(args.input)
 
+            is_epub = input_path.suffix.lower() == ".epub"
+            neighbor_ctx = bool(is_epub and args.chunk_context_window > 0)
+            mode_enum = (
+                TranslationMode.BILINGUAL if args.mode == "bilingual" else TranslationMode.REPLACE
+            )
+            cfg_report = TranslationConfig(
+                source_language=args.source,
+                target_language=args.target,
+                mode=mode_enum,
+                glossary=glossary,
+                tone=tone_n,
+                domain=domain_n,
+                custom_instruction=instruction_final,
+            )
+            sys_for_hash = (
+                compose_neighbor_context_system_instruction(cfg_report)
+                if neighbor_ctx
+                else build_system_message(cfg_report)
+            )
+            report_payload["tone"] = tone_n
+            report_payload["domain"] = domain_n
+            report_payload["instruction_length"] = len(instruction_final or "")
+            report_payload["instruction_hash"] = hashlib.sha256(
+                sys_for_hash.encode("utf-8")
+            ).hexdigest()
+
             if args.dry_run:
                 status = "dry-run"
                 elapsed = time.perf_counter() - started_at
@@ -397,6 +482,9 @@ Supported AI providers:
                 chunk_context_window=args.chunk_context_window,
                 structured_epub_batch=args.structured_epub_batch,
                 structured_epub_batch_max_chars=args.structured_epub_batch_max_chars,
+                tone=tone_n,
+                domain=domain_n,
+                instruction=instruction_final,
             )
             status = "success"
             elapsed = time.perf_counter() - started_at

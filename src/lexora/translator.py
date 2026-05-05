@@ -17,6 +17,10 @@ from .core import (
     CacheFingerprint,
     TranslationCache,
     hash_glossary,
+    build_system_message,
+    compose_neighbor_context_system_instruction,
+    normalize_tone,
+    normalize_domain,
 )
 from .providers import canonical_provider_name, get_default_provider
 from .readers import FileReader, EpubReader, MobiReader, WordReader, MarkdownReader
@@ -28,6 +32,25 @@ class TranslationCancelled(Exception):
     """Raised when a cooperative cancel is requested during ``translate_file``."""
 
     pass
+
+
+MAX_TRANSLATION_INSTRUCTION_CHARS = 8000
+
+
+def _coerce_translation_context(
+    tone: Optional[str],
+    domain: Optional[str],
+    instruction: Optional[str],
+) -> Tuple[str, str, Optional[str]]:
+    """Return normalized tone, domain, and trimmed instruction (or None)."""
+    t = normalize_tone(tone)
+    d = normalize_domain(domain)
+    ins = (instruction or "").strip()
+    if ins and len(ins) > MAX_TRANSLATION_INSTRUCTION_CHARS:
+        raise ValueError(
+            f"Instruction exceeds max length ({MAX_TRANSLATION_INSTRUCTION_CHARS} characters)"
+        )
+    return t, d, (ins or None)
 
 
 def _cancel_requested(cancel_fn: Optional[Callable[[], bool]]) -> bool:
@@ -112,6 +135,9 @@ class Translator:
         chunk_context_window: int = 0,
         structured_epub_batch: bool = True,
         structured_epub_batch_max_chars: int = 8000,
+        tone: Optional[str] = None,
+        domain: Optional[str] = None,
+        instruction: Optional[str] = None,
         on_document_progress: Optional[Callable[[int, int], None]] = None,
         cancel_requested: Optional[Callable[[], bool]] = None,
     ) -> TranslationResult:
@@ -134,6 +160,9 @@ class Translator:
             structured_epub_batch: Use JSON multi-item batches for uncached EPUB chunks when the
                 provider supports it (default True; ineffective for unsupported providers)
             structured_epub_batch_max_chars: Approx max source chars per structured batch (EPUB path)
+            tone: Translation tone machine value (default neutral); see ``normalize_tone``.
+            domain: Subject domain machine value (default general); see ``normalize_domain``.
+            instruction: Optional free-text steering appended to the composed system message.
             on_document_progress: Optional ``(docs_completed, docs_total)`` callback after each EPUB
                 document is processed (including skipped spine items), or ``(1, 1)`` when a non-EPUB
                 file finishes.
@@ -144,6 +173,8 @@ class Translator:
         input_path = Path(input_file)
         if not input_path.exists():
             raise FileNotFoundError(f"Input file not found: {input_file}")
+
+        tone_n, domain_n, instruction_n = _coerce_translation_context(tone, domain, instruction)
 
         reader = self._get_reader(input_file)
         if isinstance(reader, EpubReader):
@@ -163,6 +194,9 @@ class Translator:
                 chunk_context_window=chunk_context_window,
                 structured_epub_batch=structured_epub_batch,
                 structured_epub_batch_max_chars=structured_epub_batch_max_chars,
+                tone=tone_n,
+                domain=domain_n,
+                instruction=instruction_n,
                 on_document_progress=on_document_progress,
                 cancel_requested=cancel_requested,
             )
@@ -203,6 +237,9 @@ class Translator:
             source_language=source_language,
             mode=mode,
             glossary=glossary,
+            tone=tone_n,
+            domain=domain_n,
+            instruction=instruction_n,
         )
 
         if _cancel_requested(cancel_requested):
@@ -247,6 +284,9 @@ class Translator:
         chunk_context_window: int = 0,
         structured_epub_batch: bool = True,
         structured_epub_batch_max_chars: int = 8000,
+        tone: str = "neutral",
+        domain: str = "general",
+        instruction: Optional[str] = None,
         on_document_progress: Optional[Callable[[int, int], None]] = None,
         cancel_requested: Optional[Callable[[], bool]] = None,
     ) -> TranslationResult:
@@ -288,6 +328,9 @@ class Translator:
             target_language=target_language,
             mode=self._resolve_translation_mode(mode),
             glossary=glossary or {},
+            tone=tone,
+            domain=domain,
+            custom_instruction=instruction,
         )
 
         bilingual_nodes: List[BilingualNode] = []
@@ -300,7 +343,9 @@ class Translator:
         cache = TranslationCache(cache_path) if cache_path else None
         cache_stats_before = cache.stats() if cache else None
         cache_fingerprint = self._build_cache_fingerprint(
-            config, structured_epub_batch=use_structured
+            config,
+            structured_epub_batch=use_structured,
+            neighbor_context=chunk_context_window > 0,
         )
         started_at = time.perf_counter()
 
@@ -668,11 +713,6 @@ class Translator:
                     "TARGET_CHUNK_END",
                 ]
             )
-            contextual_instruction = (
-                "Translate only the text between TARGET_CHUNK_START and TARGET_CHUNK_END. "
-                "Use neighbor context for coherence but output only the translated target chunk. "
-                "Do not include labels or any extra commentary."
-            )
             contextual_config = TranslationConfig(
                 source_language=config.source_language,
                 target_language=config.target_language,
@@ -680,7 +720,10 @@ class Translator:
                 glossary=config.glossary,
                 temperature=config.temperature,
                 max_tokens=config.max_tokens,
-                custom_instruction=contextual_instruction,
+                tone=config.tone,
+                domain=config.domain,
+                custom_instruction=config.custom_instruction,
+                system_instruction_override=compose_neighbor_context_system_instruction(config),
             )
             result = self.provider.translate_text(contextual_text, contextual_config)
             translated = (result.translated_content or "").strip()
@@ -878,6 +921,7 @@ class Translator:
         config: TranslationConfig,
         *,
         structured_epub_batch: bool = False,
+        neighbor_context: bool = False,
     ) -> CacheFingerprint:
         """Build a robust cache fingerprint for translation behavior."""
         model = (
@@ -887,8 +931,11 @@ class Translator:
             or getattr(self.provider, "deployment", None)
             or "unknown"
         )
-        custom_instruction = config.custom_instruction or ""
-        instruction_hash = hashlib.sha256(custom_instruction.encode("utf-8")).hexdigest()
+        if neighbor_context:
+            system_for_hash = compose_neighbor_context_system_instruction(config)
+        else:
+            system_for_hash = build_system_message(config)
+        instruction_hash = hashlib.sha256(system_for_hash.encode("utf-8")).hexdigest()
         return CacheFingerprint(
             source_language=config.source_language or "auto",
             target_language=config.target_language,
@@ -902,9 +949,9 @@ class Translator:
                 else "sentence-aware-v1"
             ),
             pipeline_version=(
-                "epub-structured-json-v1"
+                "epub-structured-json-v2"
                 if structured_epub_batch
-                else "epub-node-v1"
+                else "epub-node-v2"
             ),
         )
 
@@ -1009,12 +1056,19 @@ class Translator:
         source_language: Optional[str] = None,
         mode: str = "replace",
         glossary: Optional[Dict[str, str]] = None,
+        tone: Optional[str] = None,
+        domain: Optional[str] = None,
+        instruction: Optional[str] = None,
     ) -> TranslationResult:
         """Translate raw text and return the provider-native result."""
+        tone_n, domain_n, instruction_n = _coerce_translation_context(tone, domain, instruction)
         config = TranslationConfig(
             source_language=source_language,
             target_language=target_language,
             mode=self._resolve_translation_mode(mode),
             glossary=glossary or {},
+            tone=tone_n,
+            domain=domain_n,
+            custom_instruction=instruction_n,
         )
         return self.provider.translate_text(text, config)

@@ -53,7 +53,9 @@ To reduce repeated translation cost and speed up reruns, the pipeline uses a res
 
 - Storage format: JSONL (append-only)
 - Key strategy: deterministic hash of content + behavior fingerprint
-- Fingerprint fields: source language, target language, provider name, provider model, glossary hash, custom instruction hash, chunking version, pipeline version
+- Fingerprint fields: source language, target language, provider name, provider model, glossary hash, **system message hash** (SHA-256 of the composed system instruction, including tone, domain, free-text instruction, and—when EPUB neighbor context is active—the chunk delimiter rules), chunking version, pipeline version
+- EPUB cache `pipeline_version` values: `epub-node-v2` / `epub-structured-json-v2` (v1 values remain readable for legacy JSONL lines). When the baseline system prompt or composition logic changes, bump `pipeline_version` so cache keys do not silently reuse incompatible entries.
+- System message composition: `build_system_message` in `src/lexora/core/base_translator.py` augments the default literary-translator baseline with optional **domain** (when not `general`), **tone** (when not `neutral`), and **custom_instruction** (trimmed user text). EPUB neighbor-window mode prepends the internal `TARGET_CHUNK` delimiter rule via `compose_neighbor_context_system_instruction` so user tone/domain/instruction are preserved.
 - Value: translated output for that exact content under that translation behavior
 - Schema fields: `schema_version`, `created_at`, `key`, `content_hash`, `translated_text`, `fingerprint`
 

@@ -13,7 +13,12 @@ from typing import Dict, Optional
 
 CACHE_SCHEMA_VERSION = "1.0"
 SUPPORTED_CACHE_SCHEMA_VERSIONS = {"1.0"}
-SUPPORTED_PIPELINE_VERSIONS = {"epub-node-v1", "epub-structured-json-v1"}
+SUPPORTED_PIPELINE_VERSIONS = {
+    "epub-node-v1",
+    "epub-structured-json-v1",
+    "epub-node-v2",
+    "epub-structured-json-v2",
+}
 
 
 def _sha256(text: str) -> str:
