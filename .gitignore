@@ -246,3 +246,10 @@ reports/
 
 # Default UI translation output folder (working-directory relative)
 library/
+
+# Windows desktop packaging artifacts (built by packaging/windows/build-local.ps1)
+LexoraAI-windows-amd64.msi
+LexoraAI-windows-amd64.zip
+LexoraAI-windows-amd64.wixpdb
+LexoraAI-macos-arm64.zip
+_msi_inspect/
