@@ -1,5 +1,7 @@
 # Provider API Key Setup Guide
 
+See also: [Vietnamese guide (tiếng Việt)](cau-hinh-api-key.vi.md).
+
 This guide explains how to obtain and configure API keys for each supported provider in Lexora-AI.
 
 Security notes:

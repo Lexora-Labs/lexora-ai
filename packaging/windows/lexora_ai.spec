@@ -4,7 +4,7 @@ PyInstaller spec for the Lexora AI desktop app (Windows, one-folder).
 
 Why one-folder (onedir) instead of onefile?
     A PyInstaller onefile EXE self-extracts into ``%TEMP%`` at every launch.
-    With Flet 0.21 on Windows this is the #1 reason end users see
+    On Windows with Python 3.12 and Flet's native helpers this is the #1 reason end users see
     "missing DLL / side-by-side" errors or a silent failure:
       - Antivirus / SmartScreen blocks extraction.
       - Microsoft VC++ runtime is loaded from the temp dir and occasionally
