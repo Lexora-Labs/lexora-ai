@@ -1,5 +1,7 @@
 # Lexora AI
 
+> 🇻🇳 **Tiếng Việt:** Hướng dẫn cài đặt và sử dụng tiếng Việt: [README.vi.md](README.vi.md). Hướng dẫn lấy khóa API: [docs/cau-hinh-api-key.vi.md](docs/cau-hinh-api-key.vi.md).
+
 Lexora AI is an open-source, AI-powered eBook translation tool. It helps you translate EPUB, MOBI, Word, and Markdown while keeping structure and formatting as intact as the pipeline allows.
 ![Translate](https://github.com/Lexora-Labs/lexora-ai/blob/main/docs/screenshots/translate.png?raw=true)
 
