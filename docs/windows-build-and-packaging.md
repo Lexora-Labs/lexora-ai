@@ -55,7 +55,7 @@ Running `build-local.ps1` produces three artifacts in the repo root:
 ### Why onedir (folder) instead of onefile?
 
 A PyInstaller **onefile** EXE self-extracts into `%TEMP%` at every launch.
-With Flet 0.21 + Python 3.12 on Windows this is the #1 cause of end-user
+With Flet 0.23+ and Python 3.12 on Windows this is the #1 cause of end-user
 "missing DLL / side-by-side configuration" errors and silent failures:
 
 - Antivirus / SmartScreen blocks or throttles the extraction.

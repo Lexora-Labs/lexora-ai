@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="lexora-ai",
-    version="0.2.1",
+    version="0.2.4",
     author="Lexora Labs",
     description="AI-powered eBook translation tool",
     long_description=long_description,

@@ -234,6 +234,7 @@ For manual runs, prefer **IDPF EPUB 3 reference samples** (clear license).
 
 ## Docs
 
+- Tiếng Việt: [README.vi.md](README.vi.md) (Windows), [docs/cau-hinh-api-key.vi.md](docs/cau-hinh-api-key.vi.md) (API keys)
 - [docs/provider-api-key-guide.md](docs/provider-api-key-guide.md) — API keys and provider setup
 - [docs/testing-epub-samples.md](docs/testing-epub-samples.md) — sample EPUBs and licensing
 - [docs/translation-logic.md](docs/translation-logic.md) — pipeline behavior
