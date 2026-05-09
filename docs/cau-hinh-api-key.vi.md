@@ -12,7 +12,7 @@ Tài liệu này hướng dẫn cách **lấy khóa API** và đưa vào Lexora 
 
 ## OpenAI
 
-Cổng truy cập: https://platform.openai.com/api-keys
+Cổng truy cập: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 
 Các bước:
 
@@ -32,7 +32,7 @@ OPENAI_API_KEY=mã_của_bạn
 
 ## Azure OpenAI
 
-Cổng truy cập: https://portal.azure.com
+Cổng truy cập: [https://portal.azure.com](https://portal.azure.com)
 
 Các bước:
 
@@ -58,7 +58,7 @@ AZURE_OPENAI_KEY=mã_của_bạn
 
 ## Azure AI Foundry
 
-Cổng truy cập: https://ai.azure.com
+Cổng truy cập: [https://ai.azure.com](https://ai.azure.com)
 
 Các bước:
 
@@ -84,7 +84,7 @@ AZURE_AI_FOUNDRY_MODEL=tên-model
 
 ## Gemini
 
-Cổng truy cập: https://aistudio.google.com/app/apikey
+Cổng truy cập: [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
 
 Các bước:
 
@@ -106,7 +106,7 @@ GOOGLE_API_KEY=mã_của_bạn
 
 ## Anthropic (Claude)
 
-Cổng truy cập: https://console.anthropic.com/settings/keys
+Cổng truy cập: [https://console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 
 Các bước:
 
@@ -125,7 +125,7 @@ ANTHROPIC_API_KEY=mã_của_bạn
 
 ## Qwen (DashScope)
 
-Cổng truy cập: https://dashscope.console.aliyun.com/
+Cổng truy cập: [https://dashscope.console.aliyun.com/](https://dashscope.console.aliyun.com/)
 
 Các bước:
 

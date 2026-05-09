@@ -2,6 +2,25 @@
 
 All notable changes to Lexora AI are documented here.
 
+## [v0.2.4] - 2026-05-09
+
+### Bug Fixes
+
+- **Desktop window/taskbar icon stays the default Flet icon (LAI-B-004 follow-up):** Flet 0.21.x's bundled Flutter client did not wire `windowIcon` into the Page control, so `page.window.icon` and every Python-side workaround were silently ignored at runtime. Bumped `flet` to **0.23.2** (`requirements.txt`) so `page.window.icon` reaches the native window, and the bundled `lexora-ai-icon.ico` now replaces the default Flet icon in the Windows title bar, taskbar, and Alt+Tab thumbnail in dev (`python run_ui.py --no-browser`) without needing a `flet pack` build.
+- **Branding code duplication:** Centralised desktop chrome wiring in new `src/lexora/ui/desktop_branding.py::apply_desktop_branding`. `run_ui.py` and `src/lexora/ui/main.py` now call the shared helper, eliminating two divergent copies of the icon resolution logic.
+
+### Documentation
+
+- **Vietnamese README (`README.vi.md`):** New top-level Vietnamese guide for Windows installation (ZIP and MSI from GitHub Releases, SmartScreen guidance, post-install steps, source build) with a Settings screenshot in Vietnamese.
+- **Vietnamese provider/API key guide (`docs/cau-hinh-api-key.vi.md`):** Translated, step-by-step Vietnamese version of `docs/provider-api-key-guide.md` covering OpenAI, Azure OpenAI, Azure AI Foundry, Gemini, Anthropic, and Qwen, plus a combined `.env` template and quick CLI validation snippets.
+- **Cross-links:** Added pointers from the English `README.md` and `docs/provider-api-key-guide.md` to the Vietnamese counterparts.
+
+### Internal
+
+- **Spec/docs comment cleanup:** Reworded the onefile vs onedir rationale in `packaging/windows/lexora_ai.spec` and `docs/windows-build-and-packaging.md` to attribute the failure mode to PyInstaller onefile + Python 3.12 on Windows rather than to a specific Flet minor version.
+
+---
+
 ## [v0.2.3] - 2026-05-05
 
 ### Bug Fixes
